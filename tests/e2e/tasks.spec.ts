@@ -6,28 +6,38 @@ test.describe('tasks', () => {
 		await login(page);
 	});
 
-	test('multi-column board renders one column per user', async ({ page }) => {
+	test('multi-column board renders one column per list', async ({ page }) => {
 		const columns = page.getByTestId(/^column-/);
 		await expect(columns.first()).toBeVisible();
 		const count = await columns.count();
 		expect(count).toBeGreaterThanOrEqual(3);
 	});
 
-	test('add a task and complete it', async ({ page }) => {
+	test('add a task, complete it, expand Completed, uncomplete it', async ({ page }) => {
 		const firstCol = page.getByTestId(/^column-/).first();
+		const colTestId = await firstCol.getAttribute('data-testid');
+		const listId = colTestId!.split('-')[1];
+
 		const input = firstCol.getByTestId('add-task-input');
 		await input.fill('Buy birthday cake');
 		await input.press('Enter');
-
 		await expect(firstCol.getByText('Buy birthday cake')).toBeVisible();
 
-		// Click checkbox to complete — task should disappear from "open" list after invalidation.
+		// Complete — disappears from open
 		const row = firstCol.locator('[data-testid="task-row"]', { hasText: 'Buy birthday cake' });
-		const checkbox = row.getByRole('button', { name: /Mark .* complete/i });
-		await checkbox.click();
+		await row.getByRole('button', { name: /Mark .* complete/i }).click();
+		await expect(firstCol.locator('[data-testid="task-row"]', { hasText: 'Buy birthday cake' }).first()).toHaveCount(0, { timeout: 5000 });
 
-		// After invalidation the task is filtered out (we don't show completed by default).
-		await expect(firstCol.getByText('Buy birthday cake')).toHaveCount(0, { timeout: 5000 });
+		// Completed section should appear with count >= 1; expand it
+		await firstCol.getByTestId(`toggle-completed-${listId}`).click();
+		await expect(firstCol.getByText('Buy birthday cake')).toBeVisible();
+
+		// Uncomplete via the checkbox in completed section
+		const doneRow = firstCol.locator('[data-testid="task-row"]', { hasText: 'Buy birthday cake' });
+		await doneRow.getByRole('button', { name: /Mark .* incomplete/i }).click();
+
+		// Should reappear in open section
+		await expect(firstCol.getByText('Buy birthday cake')).toBeVisible();
 	});
 
 	test('apply template adds tasks across columns', async ({ page }) => {
@@ -35,14 +45,73 @@ test.describe('tasks', () => {
 		const button = page.getByTestId(/^apply-template-/).first();
 		await button.click();
 
-		// modal closes, toast appears
 		await expect(page.getByText(/Added \d+ tasks?/)).toBeVisible({ timeout: 5000 });
 
-		// at least one of the seeded pre-trip items should now be visible somewhere
 		await expect(
 			page
 				.getByText(/Pack chargers|Pack toiletries|Empty trash|Vacuum living room/)
 				.first()
 		).toBeVisible();
+	});
+
+	test('add a new list and it appears as a column', async ({ page }) => {
+		const before = await page.getByTestId(/^column-/).count();
+		await page.getByTestId('add-list').click();
+		await page.getByTestId('list-name-input').fill('Vacation Prep');
+		await page.getByTestId('list-save').click();
+
+		await expect(page.getByText('Vacation Prep')).toBeVisible();
+		const after = await page.getByTestId(/^column-/).count();
+		expect(after).toBe(before + 1);
+	});
+
+	test('open task detail and save edits (notes + priority)', async ({ page }) => {
+		// Add a fresh task
+		const firstCol = page.getByTestId(/^column-/).first();
+		const input = firstCol.getByTestId('add-task-input');
+		await input.fill('Detail test task');
+		await input.press('Enter');
+		await expect(firstCol.getByText('Detail test task')).toBeVisible();
+
+		// Tap title to open detail
+		const row = firstCol.locator('[data-testid="task-row"]', { hasText: 'Detail test task' });
+		await row.getByRole('button', { name: 'Open task details' }).click();
+
+		// Modal opens, title input prepopulated
+		await expect(page.getByTestId('task-title-input')).toHaveValue('Detail test task');
+
+		// Set priority !!
+		await page.getByTestId('priority-2').click();
+
+		await page.getByTestId('task-save').click();
+
+		// !! prefix should appear on the row
+		await expect(firstCol.getByText('!!').first()).toBeVisible();
+	});
+
+	test('delete from detail modal asks for confirmation', async ({ page }) => {
+		const firstCol = page.getByTestId(/^column-/).first();
+		const input = firstCol.getByTestId('add-task-input');
+		await input.fill('Will be deleted');
+		await input.press('Enter');
+		await expect(firstCol.getByText('Will be deleted')).toBeVisible();
+
+		const row = firstCol.locator('[data-testid="task-row"]', { hasText: 'Will be deleted' });
+		await row.getByRole('button', { name: 'Open task details' }).click();
+
+		await page.getByTestId('task-delete').click();
+		// Confirm dialog appears
+		await expect(page.getByText('Delete this task?')).toBeVisible();
+
+		// Cancel keeps the confirm-only state; detail modal remains open behind it.
+		await page.getByTestId('confirm-cancel').click();
+		await expect(page.getByText('Delete this task?')).toBeHidden();
+
+		// Click Delete again (detail modal is still open) and confirm
+		await page.getByTestId('task-delete').click();
+		await page.getByTestId('confirm-ok').click();
+		await expect(
+			firstCol.locator('[data-testid="task-row"]', { hasText: 'Will be deleted' })
+		).toHaveCount(0, { timeout: 5000 });
 	});
 });

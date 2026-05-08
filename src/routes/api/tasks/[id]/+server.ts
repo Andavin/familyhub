@@ -13,8 +13,10 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		assigneeId: number | null;
 		listId: number;
 		dueAt: string | null;
+		dueHasTime: boolean;
 		rrule: string | null;
 		flagged: boolean;
+		priority: number;
 		sortOrder: number;
 	}>;
 
@@ -24,8 +26,10 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	if ('assigneeId' in body) update.assigneeId = body.assigneeId;
 	if ('listId' in body) update.listId = body.listId;
 	if ('dueAt' in body) update.dueAt = body.dueAt ? new Date(body.dueAt) : null;
+	if ('dueHasTime' in body) update.dueHasTime = body.dueHasTime;
 	if ('rrule' in body) update.rrule = body.rrule;
 	if ('flagged' in body) update.flagged = body.flagged;
+	if ('priority' in body) update.priority = body.priority;
 	if ('sortOrder' in body) update.sortOrder = body.sortOrder;
 
 	const [row] = await db.update(tasks).set(update).where(eq(tasks.id, id)).returning();

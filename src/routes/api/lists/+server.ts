@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { lists } from '$lib/server/schema';
-import { asc } from 'drizzle-orm';
+import { asc, max } from 'drizzle-orm';
 
 export const GET: RequestHandler = async () => {
 	const rows = await db.select().from(lists).orderBy(asc(lists.displayOrder));
@@ -18,6 +18,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		displayOrder?: number;
 	};
 	if (!body.name) return json({ error: 'name required' }, { status: 400 });
+	let displayOrder = body.displayOrder;
+	if (displayOrder === undefined) {
+		const [{ value }] = await db.select({ value: max(lists.displayOrder) }).from(lists);
+		displayOrder = (value ?? 0) + 1;
+	}
 	const [row] = await db
 		.insert(lists)
 		.values({
@@ -25,7 +30,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			color: body.color ?? 'blue',
 			ownerId: body.ownerId ?? null,
 			kind: body.kind ?? 'chores',
-			displayOrder: body.displayOrder ?? 0
+			displayOrder
 		})
 		.returning();
 	return json(row, { status: 201 });

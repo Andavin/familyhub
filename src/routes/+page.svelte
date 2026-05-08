@@ -3,50 +3,35 @@
 	import TaskRow from '$lib/components/TaskRow.svelte';
 	import AddTaskInline from '$lib/components/AddTaskInline.svelte';
 	import ApplyTemplateModal from '$lib/components/ApplyTemplateModal.svelte';
+	import ListEditModal from '$lib/components/ListEditModal.svelte';
+	import TaskDetailModal from '$lib/components/TaskDetailModal.svelte';
 	import { colorVar } from '$lib/colors';
 	import type { PageData } from './$types';
-	import type { Task } from '$lib/server/schema';
+	import type { Task, List } from '$lib/server/schema';
 
 	let { data }: { data: PageData } = $props();
 
 	type Column = {
-		title: string;
-		emoji: string;
-		color: string;
-		listId: number;
-		assigneeId: number | null;
-		tasks: Task[];
+		list: List;
+		open: Task[];
+		done: Task[];
 	};
 
-	const columns = $derived.by<Column[]>(() => {
-		const cols: Column[] = [];
-		for (const u of data.users) {
-			const list = data.lists.find((l) => l.ownerId === u.id);
-			if (!list) continue;
-			cols.push({
-				title: u.name,
-				emoji: u.emoji,
-				color: u.color,
-				listId: list.id,
-				assigneeId: u.id,
-				tasks: data.tasks.filter((t) => t.listId === list.id || t.assigneeId === u.id)
-			});
-		}
-		const family = data.lists.find((l) => l.ownerId === null && l.kind === 'chores');
-		if (family) {
-			cols.push({
-				title: family.name,
-				emoji: '🏡',
-				color: family.color,
-				listId: family.id,
-				assigneeId: null,
-				tasks: data.tasks.filter((t) => t.listId === family.id && !t.assigneeId)
-			});
-		}
-		return cols;
-	});
+	const columns = $derived.by<Column[]>(() =>
+		data.lists.map((list) => ({
+			list,
+			open: data.openTasks.filter((t) => t.listId === list.id),
+			done: data.doneTasks.filter((t) => t.listId === list.id)
+		}))
+	);
 
 	let templateModal = $state(false);
+	let listModalOpen = $state(false);
+	let listBeingEdited = $state<List | null>(null);
+	let taskModalOpen = $state(false);
+	let taskBeingEdited = $state<Task | null>(null);
+	let expandedDone = $state<Record<number, boolean>>({});
+
 	let toast = $state('');
 	let toastTimer: ReturnType<typeof setTimeout> | null = null;
 	function showToast(msg: string) {
@@ -69,17 +54,26 @@
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({
-				listId: col.listId,
+				listId: col.list.id,
 				title,
-				assigneeId: col.assigneeId
+				assigneeId: col.list.ownerId
 			})
 		});
 		await invalidateAll();
 	}
 
-	async function deleteTask(t: Task) {
-		await fetch(`/api/tasks/${t.id}`, { method: 'DELETE' });
-		await invalidateAll();
+	function openListEdit(list: List | null) {
+		listBeingEdited = list;
+		listModalOpen = true;
+	}
+
+	function openTask(t: Task) {
+		taskBeingEdited = t;
+		taskModalOpen = true;
+	}
+
+	function toggleDone(listId: number) {
+		expandedDone = { ...expandedDone, [listId]: !expandedDone[listId] };
 	}
 </script>
 
@@ -100,33 +94,78 @@
 </section>
 
 <div class="board snap-cols no-scrollbar" data-testid="board">
-	{#each columns as col (col.listId)}
-		<article class="column" style="--c: {colorVar(col.color)}" data-testid="column-{col.listId}">
+	{#each columns as col (col.list.id)}
+		{@const open = col.open}
+		{@const done = col.done}
+		{@const isDoneOpen = !!expandedDone[col.list.id]}
+		<article
+			class="column"
+			style="--c: {colorVar(col.list.color)}"
+			data-testid="column-{col.list.id}"
+		>
 			<header class="col-head">
 				<span class="dot"></span>
-				<span class="col-title">
-					<span class="emoji">{col.emoji}</span>
-					{col.title}
-				</span>
-				<span class="col-count">{col.tasks.length}</span>
+				<span class="col-title">{col.list.name}</span>
+				<span class="col-count">{open.length}</span>
+				<button
+					class="col-edit"
+					aria-label="Edit list"
+					title="Edit list"
+					onclick={() => openListEdit(col.list)}
+					data-testid="edit-list-{col.list.id}"
+				>
+					⋯
+				</button>
 			</header>
 			<div class="col-body">
-				{#each col.tasks as task (task.id)}
+				{#each open as task (task.id)}
 					<TaskRow
 						{task}
-						color={col.color}
+						color={col.list.color}
 						onComplete={complete}
-						ondelete={deleteTask}
+						onopen={openTask}
 					/>
 				{/each}
 				<AddTaskInline
-					color={col.color}
+					color={col.list.color}
 					placeholder="New Reminder"
 					onsubmit={(title) => addTask(col, title)}
 				/>
+
+				{#if done.length > 0}
+					<div class="completed-block">
+						<button
+							class="completed-toggle"
+							aria-expanded={isDoneOpen}
+							onclick={() => toggleDone(col.list.id)}
+							data-testid="toggle-completed-{col.list.id}"
+						>
+							<span class="chev" class:open={isDoneOpen}>›</span>
+							<span>Completed</span>
+							<span class="completed-count">{done.length}</span>
+						</button>
+						{#if isDoneOpen}
+							<div class="completed-list">
+								{#each done as task (task.id)}
+									<TaskRow
+										{task}
+										color={col.list.color}
+										onComplete={complete}
+										onopen={openTask}
+									/>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
 			</div>
 		</article>
 	{/each}
+
+	<button class="add-column" onclick={() => openListEdit(null)} data-testid="add-list">
+		<span>＋</span>
+		<span>Add list</span>
+	</button>
 </div>
 
 <ApplyTemplateModal
@@ -135,6 +174,27 @@
 	onclose={() => (templateModal = false)}
 	onapplied={async (n) => {
 		showToast(`Added ${n} ${n === 1 ? 'task' : 'tasks'}`);
+		await invalidateAll();
+	}}
+/>
+
+<ListEditModal
+	open={listModalOpen}
+	list={listBeingEdited}
+	users={data.users}
+	onclose={() => (listModalOpen = false)}
+	onsaved={async () => {
+		await invalidateAll();
+	}}
+/>
+
+<TaskDetailModal
+	open={taskModalOpen}
+	task={taskBeingEdited}
+	users={data.users}
+	lists={data.lists}
+	onclose={() => (taskModalOpen = false)}
+	onsaved={async () => {
 		await invalidateAll();
 	}}
 />
@@ -192,23 +252,84 @@
 		font-weight: 700;
 		font-size: 1.05rem;
 		flex: 1;
-		display: inline-flex;
-		gap: 0.4rem;
-		align-items: center;
-	}
-	.emoji {
-		font-size: 1.1rem;
 	}
 	.col-count {
-		font-size: 1.4rem;
+		font-size: 1.2rem;
 		font-weight: 700;
 		color: color-mix(in srgb, var(--c) 60%, transparent);
 		font-family: var(--font-display);
+	}
+	.col-edit {
+		padding: 0 0.5rem;
+		font-size: 1.3rem;
+		color: var(--color-muted);
+		line-height: 1;
+	}
+	.col-edit:hover {
+		color: var(--color-ink);
 	}
 	.col-body {
 		flex: 1;
 		overflow-y: auto;
 		min-height: 0;
+	}
+	.completed-block {
+		margin-top: 0.85rem;
+		padding-top: 0.5rem;
+		border-top: 1px solid var(--color-divider);
+	}
+	.completed-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.78rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--color-muted);
+		padding: 0.35rem 0;
+		width: 100%;
+	}
+	.chev {
+		display: inline-block;
+		transition: transform 160ms ease;
+		font-weight: 700;
+	}
+	.chev.open {
+		transform: rotate(90deg);
+	}
+	.completed-count {
+		margin-left: auto;
+		color: var(--color-muted);
+	}
+	.completed-list :global(.task-row) {
+		opacity: 0.6;
+	}
+	.add-column {
+		flex: 0 0 240px;
+		min-height: 110px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		border-radius: 1.25rem;
+		border: 2px dashed color-mix(in srgb, var(--color-muted) 40%, transparent);
+		color: var(--color-muted);
+		font-weight: 600;
+		font-size: 0.95rem;
+		background: transparent;
+		transition: background 120ms, color 120ms, border-color 120ms;
+		align-self: stretch;
+	}
+	.add-column:hover {
+		background: rgba(255, 255, 255, 0.5);
+		color: var(--color-ink);
+		border-color: var(--color-ink);
+	}
+	.add-column span:first-child {
+		font-size: 1.5rem;
+		font-weight: 400;
 	}
 	.toast {
 		position: fixed;

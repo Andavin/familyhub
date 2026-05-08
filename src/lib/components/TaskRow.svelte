@@ -7,14 +7,26 @@
 		task: Task;
 		color: string;
 		onComplete: (task: Task) => void;
-		ondelete?: (task: Task) => void;
-		onflag?: (task: Task) => void;
+		onopen?: (task: Task) => void;
 	};
-	let { task, color, onComplete, ondelete, onflag }: Props = $props();
+	let { task, color, onComplete, onopen }: Props = $props();
 
 	const completed = $derived(!!task.completedAt);
 	const due = $derived(task.dueAt ? new Date(task.dueAt) : null);
 	const overdue = $derived(!completed && isOverdue(due));
+	const priorityLabel = $derived(
+		task.priority === 1 ? '!' : task.priority === 2 ? '!!' : task.priority === 3 ? '!!!' : ''
+	);
+
+	function dueText(d: Date): string {
+		if (task.dueHasTime) return formatDueLabel(d);
+		return formatDueLabel(d).replace(/ at \d.*/, '');
+	}
+
+	function open(e: MouseEvent | KeyboardEvent) {
+		if (e.target instanceof HTMLElement && e.target.closest('button')) return;
+		onopen?.(task);
+	}
 </script>
 
 <div class="task-row" class:task-done={completed} data-testid="task-row">
@@ -24,8 +36,23 @@
 		label={completed ? `Mark "${task.title}" incomplete` : `Mark "${task.title}" complete`}
 		onchange={() => onComplete(task)}
 	/>
-	<div class="flex-1 min-w-0">
+	<div
+		class="flex-1 min-w-0 cursor-pointer"
+		role="button"
+		tabindex="0"
+		aria-label="Open task details"
+		onclick={open}
+		onkeydown={(e) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				open(e);
+			}
+		}}
+	>
 		<div class="flex items-center gap-1.5 min-w-0">
+			{#if priorityLabel}
+				<span class="prio" data-prio={task.priority}>{priorityLabel}</span>
+			{/if}
 			<span class="task-title truncate">{task.title}</span>
 			{#if task.flagged}
 				<span aria-label="Flagged" title="Flagged" class="text-[color:var(--color-list-orange)]">⚑</span>
@@ -37,31 +64,19 @@
 			</div>
 		{/if}
 		{#if due}
-			<div class="text-[13px] mt-0.5 flex items-center gap-1.5">
-				<span
-					class:overdue
-					class="text-[color:var(--color-muted)]"
-				>
-					{formatDueLabel(due)}
+			<div class="text-[13px] mt-0.5 flex items-center gap-1.5 flex-wrap">
+				{#if overdue}
+					<span class="overdue-pill">Overdue</span>
+				{/if}
+				<span class="text-[color:var(--color-muted)]" class:overdue-text={overdue}>
+					{dueText(due)}
 				</span>
 				{#if task.rrule}
-					<span class="text-[11px] text-[color:var(--color-muted)]" title={task.rrule}
-						>↻</span
-					>
+					<span class="text-[11px] text-[color:var(--color-muted)]" title={task.rrule}>↻</span>
 				{/if}
 			</div>
 		{/if}
 	</div>
-	{#if ondelete}
-		<button
-			type="button"
-			class="row-action"
-			aria-label="Delete task"
-			onclick={() => ondelete?.(task)}
-		>
-			✕
-		</button>
-	{/if}
 </div>
 
 <style>
@@ -80,17 +95,30 @@
 		line-height: 1.3;
 		color: var(--color-ink);
 	}
-	.overdue {
+	.prio {
+		font-weight: 800;
+		font-size: 0.8rem;
+		letter-spacing: -0.05em;
+	}
+	.prio[data-prio='1'] {
+		color: var(--color-list-blue);
+	}
+	.prio[data-prio='2'],
+	.prio[data-prio='3'] {
+		color: var(--color-list-red);
+	}
+	.overdue-pill {
+		display: inline-block;
+		padding: 1px 6px;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--color-list-red) 15%, white);
+		color: var(--color-list-red);
+		font-weight: 700;
+		font-size: 0.7rem;
+		letter-spacing: 0.02em;
+	}
+	.overdue-text {
 		color: var(--color-list-red) !important;
-	}
-	.row-action {
-		opacity: 0;
-		color: var(--color-muted);
-		font-size: 13px;
-		padding: 0.25rem 0.5rem;
-		transition: opacity 120ms ease;
-	}
-	.task-row:hover .row-action {
-		opacity: 1;
+		font-weight: 600;
 	}
 </style>
