@@ -5,8 +5,15 @@
 		'Helvetica Neue', sans-serif;
 	--font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui,
 		sans-serif;
+}
 
-	/* Apple Reminders palette */
+/*
+ * App palette. Defined on :root (not @theme) so every variable always ships
+ * regardless of whether Tailwind sees it referenced as a utility class.
+ * We reference these via `var(...)` in inline styles and component CSS,
+ * which Tailwind's tree-shaker can't detect, so it would otherwise drop them.
+ */
+:root {
 	--color-canvas: #fef7f0;
 	--color-canvas-2: #fff1e3;
 	--color-card: #ffffff;

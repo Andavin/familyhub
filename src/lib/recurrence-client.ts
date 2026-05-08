@@ -1,7 +1,13 @@
 // Client-safe wrappers around rrule. Mirrors $lib/server/recurrence.ts but is
 // importable from .svelte components (no $lib/server boundary violation).
 
-import { RRule, type Options } from 'rrule';
+// rrule ships dual CJS/ESM and the named export shape differs between Vite's
+// dev SSR (Node CJS) and the browser ESM bundle. Importing as a namespace and
+// digging out `RRule` works in both.
+import * as rruleNs from 'rrule';
+type Options = rruleNs.Options;
+const RRule = (rruleNs as { RRule?: typeof rruleNs.RRule; default?: { RRule: typeof rruleNs.RRule } })
+	.RRule ?? (rruleNs as unknown as { default: { RRule: typeof rruleNs.RRule } }).default.RRule;
 
 export function buildRrule(
 	freq: 'daily' | 'weekly' | 'monthly' | 'yearly' | null,
