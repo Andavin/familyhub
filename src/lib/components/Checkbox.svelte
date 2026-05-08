@@ -41,7 +41,7 @@
 		width: var(--s);
 		height: var(--s);
 		border-radius: 9999px;
-		border: 1.6px solid color-mix(in srgb, var(--c) 50%, transparent);
+		border: 1.6px solid #c7c7cc;
 		background: transparent;
 		display: inline-flex;
 		align-items: center;
