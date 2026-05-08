@@ -1,0 +1,82 @@
+@import 'tailwindcss';
+
+@theme {
+	--font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui,
+		'Helvetica Neue', sans-serif;
+	--font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui,
+		sans-serif;
+
+	/* Apple Reminders palette */
+	--color-canvas: #fef7f0;
+	--color-canvas-2: #fff1e3;
+	--color-card: #ffffff;
+	--color-ink: #1c1c1e;
+	--color-ink-2: #3a3a3c;
+	--color-muted: #8e8e93;
+	--color-divider: rgba(60, 60, 67, 0.1);
+
+	--color-list-red: #ff3b30;
+	--color-list-orange: #ff9500;
+	--color-list-yellow: #ffcc00;
+	--color-list-green: #34c759;
+	--color-list-mint: #00c7be;
+	--color-list-teal: #30b0c7;
+	--color-list-cyan: #32ade6;
+	--color-list-blue: #007aff;
+	--color-list-indigo: #5856d6;
+	--color-list-purple: #af52de;
+	--color-list-pink: #ff2d55;
+	--color-list-brown: #a2845e;
+}
+
+html,
+body {
+	background:
+		radial-gradient(circle at 20% 0%, var(--color-canvas-2) 0%, transparent 45%),
+		radial-gradient(circle at 90% 100%, #ffe9d0 0%, transparent 50%),
+		var(--color-canvas);
+	color: var(--color-ink);
+	font-family: var(--font-sans);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	min-height: 100vh;
+}
+
+button {
+	cursor: pointer;
+}
+
+/* Apple-Reminders-style scroll behavior on the multi-column board */
+.snap-cols {
+	scroll-snap-type: x mandatory;
+	overscroll-behavior-x: contain;
+}
+.snap-cols > * {
+	scroll-snap-align: start;
+}
+
+/* Hide scrollbar visually but keep scrolling */
+.no-scrollbar::-webkit-scrollbar {
+	display: none;
+}
+.no-scrollbar {
+	scrollbar-width: none;
+}
+
+/* Strikethrough animation when a task is checked */
+@keyframes strike {
+	from {
+		background-size: 0 1.5px;
+	}
+	to {
+		background-size: 100% 1.5px;
+	}
+}
+.task-done .task-title {
+	color: var(--color-muted);
+	background-image: linear-gradient(currentColor, currentColor);
+	background-repeat: no-repeat;
+	background-position: 0 60%;
+	background-size: 100% 1.5px;
+	animation: strike 240ms ease-out;
+}
