@@ -13,17 +13,38 @@
 
 	type Column = {
 		list: List;
-		open: Task[];
+		today: Task[];
+		scheduled: Task[];
 		done: Task[];
 	};
 
-	const columns = $derived.by<Column[]>(() =>
-		data.lists.map((list) => ({
-			list,
-			open: data.openTasks.filter((t) => t.listId === list.id),
-			done: data.doneTasks.filter((t) => t.listId === list.id)
-		}))
-	);
+	function endOfToday(): number {
+		const d = new Date();
+		d.setHours(23, 59, 59, 999);
+		return d.getTime();
+	}
+
+	const columns = $derived.by<Column[]>(() => {
+		const cutoff = endOfToday();
+		return data.lists.map((list) => {
+			const listOpen = data.openTasks.filter((t) => t.listId === list.id);
+			const today = listOpen.filter(
+				(t) => !t.dueAt || new Date(t.dueAt).getTime() <= cutoff
+			);
+			const scheduled = listOpen
+				.filter((t) => t.dueAt && new Date(t.dueAt).getTime() > cutoff)
+				.sort(
+					(a, b) =>
+						new Date(a.dueAt as Date).getTime() - new Date(b.dueAt as Date).getTime()
+				);
+			return {
+				list,
+				today,
+				scheduled,
+				done: data.doneTasks.filter((t) => t.listId === list.id)
+			};
+		});
+	});
 
 	let checklistModal = $state(false);
 	let listModalOpen = $state(false);
@@ -31,6 +52,7 @@
 	let taskModalOpen = $state(false);
 	let taskBeingEdited = $state<Task | null>(null);
 	let expandedDone = $state<Record<number, boolean>>({});
+	let expandedScheduled = $state<Record<number, boolean>>({});
 
 	let toast = $state('');
 	let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -75,6 +97,9 @@
 	function toggleDone(listId: number) {
 		expandedDone = { ...expandedDone, [listId]: !expandedDone[listId] };
 	}
+	function toggleScheduled(listId: number) {
+		expandedScheduled = { ...expandedScheduled, [listId]: !expandedScheduled[listId] };
+	}
 </script>
 
 <section class="px-4 sm:px-8 pb-3 flex items-center justify-between gap-3">
@@ -95,9 +120,11 @@
 
 <div class="board snap-cols no-scrollbar" data-testid="board">
 	{#each columns as col (col.list.id)}
-		{@const open = col.open}
+		{@const today = col.today}
+		{@const scheduled = col.scheduled}
 		{@const done = col.done}
 		{@const isDoneOpen = !!expandedDone[col.list.id]}
+		{@const isScheduledOpen = !!expandedScheduled[col.list.id]}
 		<article
 			class="column"
 			style="--c: {colorVar(col.list.color)}"
@@ -106,7 +133,7 @@
 			<header class="col-head">
 				<span class="dot"></span>
 				<span class="col-title">{col.list.name}</span>
-				<span class="col-count">{open.length}</span>
+				<span class="col-count">{today.length}</span>
 				<button
 					class="col-edit"
 					aria-label="Edit list"
@@ -118,7 +145,7 @@
 				</button>
 			</header>
 			<div class="col-body">
-				{#each open as task (task.id)}
+				{#each today as task (task.id)}
 					<TaskRow
 						{task}
 						color={col.list.color}
@@ -128,21 +155,48 @@
 				{/each}
 				<AddTaskInline
 					color={col.list.color}
-					placeholder="New Reminder"
+					placeholder="New Task"
 					onsubmit={(title) => addTask(col, title)}
 				/>
 
-				{#if done.length > 0}
-					<div class="completed-block">
+				{#if scheduled.length > 0}
+					<div class="section-block">
 						<button
-							class="completed-toggle"
+							class="section-toggle"
+							aria-expanded={isScheduledOpen}
+							onclick={() => toggleScheduled(col.list.id)}
+							data-testid="toggle-scheduled-{col.list.id}"
+						>
+							<span class="chev" class:open={isScheduledOpen}>›</span>
+							<span>Scheduled</span>
+							<span class="section-count">{scheduled.length}</span>
+						</button>
+						{#if isScheduledOpen}
+							<div class="scheduled-list">
+								{#each scheduled as task (task.id)}
+									<TaskRow
+										{task}
+										color={col.list.color}
+										onComplete={complete}
+										onopen={openTask}
+									/>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
+
+				{#if done.length > 0}
+					<div class="section-block">
+						<button
+							class="section-toggle"
 							aria-expanded={isDoneOpen}
 							onclick={() => toggleDone(col.list.id)}
 							data-testid="toggle-completed-{col.list.id}"
 						>
 							<span class="chev" class:open={isDoneOpen}>›</span>
 							<span>Completed</span>
-							<span class="completed-count">{done.length}</span>
+							<span class="section-count">{done.length}</span>
 						</button>
 						{#if isDoneOpen}
 							<div class="completed-list">
@@ -273,12 +327,12 @@
 		overflow-y: auto;
 		min-height: 0;
 	}
-	.completed-block {
+	.section-block {
 		margin-top: 0.85rem;
 		padding-top: 0.5rem;
 		border-top: 1px solid var(--color-divider);
 	}
-	.completed-toggle {
+	.section-toggle {
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
@@ -298,7 +352,7 @@
 	.chev.open {
 		transform: rotate(90deg);
 	}
-	.completed-count {
+	.section-count {
 		margin-left: auto;
 		color: var(--color-muted);
 	}

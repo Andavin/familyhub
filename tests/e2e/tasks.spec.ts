@@ -89,6 +89,36 @@ test.describe('tasks', () => {
 		await expect(firstCol.getByText('!!').first()).toBeVisible();
 	});
 
+	test('future-due task lands in Scheduled, not Today', async ({ page }) => {
+		const firstCol = page.getByTestId(/^column-/).first();
+		const colTestId = await firstCol.getAttribute('data-testid');
+		const listId = colTestId!.split('-')[1];
+
+		// Create a task due 7 days from now via API
+		const dueAt = new Date(Date.now() + 7 * 86_400_000);
+		await page.evaluate(
+			async ([lid, iso]) => {
+				await fetch('/api/tasks', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ listId: Number(lid), title: 'Future task', dueAt: iso })
+				});
+			},
+			[listId, dueAt.toISOString()]
+		);
+
+		await page.reload();
+		await page.waitForLoadState('networkidle');
+
+		// Not in the Today portion of the column
+		// (we look for a row strictly *above* the Scheduled toggle)
+		await expect(firstCol.getByTestId(`toggle-scheduled-${listId}`)).toBeVisible();
+
+		// After expanding Scheduled, the task is visible
+		await firstCol.getByTestId(`toggle-scheduled-${listId}`).click();
+		await expect(firstCol.getByText('Future task')).toBeVisible();
+	});
+
 	test('delete from detail modal asks for confirmation', async ({ page }) => {
 		const firstCol = page.getByTestId(/^column-/).first();
 		const input = firstCol.getByTestId('add-task-input');
