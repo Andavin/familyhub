@@ -27,7 +27,18 @@ export function formatDueLabel(d: Date | null | undefined): string {
 	return isMidnight ? datePart : `${datePart} at ${time}`;
 }
 
-export function isOverdue(d: Date | null | undefined): boolean {
+/**
+ * Whether a due date should be flagged as overdue right now.
+ *
+ * When `hasTime` is true, the task is overdue any moment after dueAt.
+ * When `hasTime` is false (date-only), the task is only overdue once the
+ * entire day has passed — a task scheduled for "today" without a specific
+ * time isn't overdue at 9 a.m.
+ */
+export function isOverdue(d: Date | null | undefined, hasTime = true): boolean {
 	if (!d) return false;
-	return new Date(d).getTime() < Date.now();
+	const due = new Date(d);
+	if (hasTime) return due.getTime() < Date.now();
+	const endOfDueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate(), 23, 59, 59, 999);
+	return endOfDueDay.getTime() < Date.now();
 }

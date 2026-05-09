@@ -17,7 +17,7 @@
 
 	const completed = $derived(!!task.completedAt);
 	const due = $derived(task.dueAt ? new Date(task.dueAt) : null);
-	const overdue = $derived(!completed && isOverdue(due));
+	const overdue = $derived(!completed && isOverdue(due, task.dueHasTime));
 	const priorityLabel = $derived(
 		task.priority === 1 ? '!' : task.priority === 2 ? '!!' : task.priority === 3 ? '!!!' : ''
 	);
