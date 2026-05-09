@@ -14,6 +14,8 @@ export type CalEvent = {
 	feedName: string;
 	color: string | null;
 	summary: string;
+	location: string | null;
+	description: string | null;
 	start: Date;
 	end: Date;
 	allDay: boolean;
@@ -22,7 +24,52 @@ export type CalEvent = {
 const TTL_MS = 5 * 60_000;
 const cache = new Map<string, { at: number; events: Omit<CalEvent, 'feedId'>[] }>();
 
-function parseIcsDate(value: string): { date: Date; allDay: boolean } {
+/**
+ * Compute the UTC instant for the given wall-clock components interpreted in
+ * the named IANA timezone. Uses Intl.DateTimeFormat to round-trip and adjust;
+ * one iteration handles DST cleanly except in the rare "fall-back" ambiguous
+ * hour, which we resolve in favor of the earlier instant (matches Apple).
+ */
+function zonedToUtc(
+	y: number,
+	mo: number,
+	d: number,
+	h: number,
+	mi: number,
+	s: number,
+	tzid: string
+): Date {
+	const guess = Date.UTC(y, mo, d, h, mi, s);
+	const fmt = new Intl.DateTimeFormat('en-US', {
+		timeZone: tzid,
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+		second: '2-digit',
+		hour12: false
+	});
+	const parts = fmt.formatToParts(new Date(guess)).reduce<Record<string, string>>((a, p) => {
+		if (p.type !== 'literal') a[p.type] = p.value;
+		return a;
+	}, {});
+	const asLocal = Date.UTC(
+		+parts.year,
+		+parts.month - 1,
+		+parts.day,
+		parts.hour === '24' ? 0 : +parts.hour,
+		+parts.minute,
+		+parts.second
+	);
+	const offset = asLocal - guess;
+	return new Date(guess - offset);
+}
+
+function parseIcsDate(
+	value: string,
+	tzid: string | null
+): { date: Date; allDay: boolean } {
 	// VALUE=DATE → all-day, format YYYYMMDD
 	if (/^\d{8}$/.test(value)) {
 		const y = +value.slice(0, 4);
@@ -30,22 +77,44 @@ function parseIcsDate(value: string): { date: Date; allDay: boolean } {
 		const d = +value.slice(6, 8);
 		return { date: new Date(Date.UTC(y, m, d)), allDay: true };
 	}
-	// 20260514T120000Z or 20260514T120000
+	// 20260514T120000Z (UTC) or 20260514T120000 (TZID-scoped or floating local)
 	const m = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/);
 	if (m) {
 		const [, y, mo, d, h, mi, s, z] = m;
-		const ms = Date.UTC(+y, +mo - 1, +d, +h, +mi, +s);
-		// If no Z suffix the time is in the publisher's local TZ. We can't know
-		// what TZ that is from the line alone (that lives in TZID/VTIMEZONE),
-		// so for the kiosk we treat naive times as the server's local TZ — a
-		// pragmatic shortcut that matches "publisher and reader live in the
-		// same household" for our use case.
-		return {
-			date: new Date(ms - (z ? 0 : new Date().getTimezoneOffset() * 60_000)),
-			allDay: false
-		};
+		const Y = +y;
+		const Mo = +mo - 1;
+		const D = +d;
+		const H = +h;
+		const Mi = +mi;
+		const S = +s;
+		if (z) {
+			return { date: new Date(Date.UTC(Y, Mo, D, H, Mi, S)), allDay: false };
+		}
+		if (tzid) {
+			return { date: zonedToUtc(Y, Mo, D, H, Mi, S, tzid), allDay: false };
+		}
+		// Floating local time — interpret in the server's timezone.
+		return { date: new Date(Y, Mo, D, H, Mi, S), allDay: false };
 	}
 	return { date: new Date(value), allDay: false };
+}
+
+/**
+ * Extract a parameter value from a property line, e.g.
+ *   getParam("DTSTART;TZID=America/Denver;VALUE=DATE-TIME:...", "TZID")
+ *   → "America/Denver"
+ */
+function getParam(line: string, name: string): string | null {
+	const colon = line.indexOf(':');
+	const head = colon === -1 ? line : line.slice(0, colon);
+	const re = new RegExp(`(?:^|;)${name}=([^;:]+)`, 'i');
+	const m = head.match(re);
+	return m ? m[1] : null;
+}
+
+function unescapeText(s: string | null): string | null {
+	if (!s) return s;
+	return s.replace(/\\n/gi, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\');
 }
 
 export function parseIcs(
@@ -61,26 +130,37 @@ export function parseIcs(
 		// previous line. Reverse it before scanning.
 		const unfolded = body.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '');
 		const lines = unfolded.split(/\r?\n/);
-		const get = (key: string) => {
-			const line = lines.find((l) => l.startsWith(key + ':') || l.startsWith(key + ';'));
+		const findLine = (key: string) =>
+			lines.find((l) => l.startsWith(key + ':') || l.startsWith(key + ';')) ?? null;
+		const valueOf = (line: string | null) => {
 			if (!line) return null;
 			const idx = line.indexOf(':');
 			return idx === -1 ? null : line.slice(idx + 1).trim();
 		};
-		const uid = get('UID') ?? Math.random().toString(36).slice(2);
-		const summary = get('SUMMARY') ?? '(no title)';
-		const dtstartLine = lines.find((l) => l.startsWith('DTSTART'));
-		const dtendLine = lines.find((l) => l.startsWith('DTEND'));
+
+		const uid = valueOf(findLine('UID')) ?? Math.random().toString(36).slice(2);
+		const summary = valueOf(findLine('SUMMARY')) ?? '(no title)';
+		const location = unescapeText(valueOf(findLine('LOCATION')));
+		const description = unescapeText(valueOf(findLine('DESCRIPTION')));
+
+		const dtstartLine = findLine('DTSTART');
+		const dtendLine = findLine('DTEND');
 		if (!dtstartLine) continue;
-		const start = parseIcsDate(dtstartLine.slice(dtstartLine.indexOf(':') + 1).trim());
+		const startTzid = getParam(dtstartLine, 'TZID');
+		const endTzid = dtendLine ? getParam(dtendLine, 'TZID') : null;
+
+		const start = parseIcsDate(valueOf(dtstartLine) as string, startTzid);
 		const end = dtendLine
-			? parseIcsDate(dtendLine.slice(dtendLine.indexOf(':') + 1).trim())
+			? parseIcsDate(valueOf(dtendLine) as string, endTzid)
 			: { date: new Date(start.date.getTime() + 60 * 60_000), allDay: start.allDay };
+
 		events.push({
 			uid,
 			feedName,
 			color,
-			summary,
+			summary: unescapeText(summary) ?? summary,
+			location,
+			description,
 			start: start.date,
 			end: end.date,
 			allDay: start.allDay

@@ -77,6 +77,10 @@
 		);
 	}
 
+	function startOfUtcDay(d: Date): Date {
+		return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+	}
+
 	type Pill = {
 		key: string;
 		label: string;
@@ -84,6 +88,9 @@
 		kind: 'event' | 'reminder' | 'ghost';
 		time: number;
 		task?: Task;
+		// event-only:
+		location?: string | null;
+		allDay?: boolean;
 	};
 
 	function userColor(uid: number | null): string {
@@ -96,13 +103,22 @@
 		for (const e of data.events) {
 			if (!isPersonVisible(e.userId)) continue;
 			const start = new Date(e.start);
-			if (sameDay(start, d)) {
+			const end = new Date(e.end);
+			// All-day events span [start, end) in UTC date-only. Render the
+			// pill on every day from start (inclusive) up to end (exclusive).
+			const matches = e.allDay
+				? d.getTime() >= startOfUtcDay(start).getTime() &&
+				  d.getTime() < startOfUtcDay(end).getTime()
+				: sameDay(start, d);
+			if (matches) {
 				pills.push({
 					key: 'e' + e.uid + start.toISOString(),
 					label: e.summary,
 					color: e.color ?? 'blue',
 					kind: 'event',
-					time: start.getTime()
+					time: start.getTime(),
+					location: e.location,
+					allDay: e.allDay
 				});
 			}
 		}
@@ -300,12 +316,22 @@
 					<div class="flex-1 min-w-0">
 						<div class="font-medium truncate">{p.label}</div>
 						<div class="text-xs text-[color:var(--color-muted)]">
-							{p.kind === 'event' ? 'Event' : p.kind === 'ghost' ? 'Repeats' : 'Reminder'} ·
-							{new Date(p.time).toLocaleTimeString([], {
-								hour: 'numeric',
-								minute: '2-digit'
-							})}
+							{p.kind === 'event' ? 'Event' : p.kind === 'ghost' ? 'Repeats' : 'Reminder'}
+							{#if p.kind === 'event' && p.allDay}
+								· All day
+							{:else}
+								·
+								{new Date(p.time).toLocaleTimeString([], {
+									hour: 'numeric',
+									minute: '2-digit'
+								})}
+							{/if}
 						</div>
+						{#if p.location}
+							<div class="text-xs text-[color:var(--color-muted)] truncate">
+								📍 {p.location}
+							</div>
+						{/if}
 					</div>
 				</div>
 			{:else}

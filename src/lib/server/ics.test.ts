@@ -6,6 +6,8 @@ VERSION:2.0
 BEGIN:VEVENT
 UID:abc-123
 SUMMARY:Soccer practice
+LOCATION:Field 4
+DESCRIPTION:Bring water\\nand cleats
 DTSTART:20260512T180000Z
 DTEND:20260512T193000Z
 END:VEVENT
@@ -22,10 +24,16 @@ SUMMARY:Long
  folding per RFC 5545
 DTSTART:20260513T090000Z
 END:VEVENT
+BEGIN:VEVENT
+UID:tz-event
+SUMMARY:Breakfast
+DTSTART;TZID=America/Denver:20260509T040000
+DTEND;TZID=America/Denver:20260509T050000
+END:VEVENT
 END:VCALENDAR`;
 
 describe('parseIcs', () => {
-	it('parses a timed VEVENT', () => {
+	it('parses a timed VEVENT in UTC', () => {
 		const events = parseIcs(SAMPLE, 'Test', 'blue');
 		const e = events.find((x) => x.uid === 'abc-123');
 		expect(e).toBeTruthy();
@@ -33,6 +41,13 @@ describe('parseIcs', () => {
 		expect(e!.allDay).toBe(false);
 		expect(e!.start.toISOString()).toBe('2026-05-12T18:00:00.000Z');
 		expect(e!.end.toISOString()).toBe('2026-05-12T19:30:00.000Z');
+	});
+
+	it('extracts LOCATION and unescapes DESCRIPTION newlines', () => {
+		const events = parseIcs(SAMPLE, 'Test', 'blue');
+		const e = events.find((x) => x.uid === 'abc-123');
+		expect(e!.location).toBe('Field 4');
+		expect(e!.description).toBe('Bring water\nand cleats');
 	});
 
 	it('parses an all-day VEVENT (DATE value)', () => {
@@ -47,7 +62,6 @@ describe('parseIcs', () => {
 		const events = parseIcs(SAMPLE, 'Test', 'blue');
 		const e = events.find((x) => x.uid === 'abc-789');
 		expect(e).toBeTruthy();
-		// Folded continuation lines should be unfolded into a single SUMMARY.
 		expect(e!.summary).toBe('Longdescription with linefolding per RFC 5545');
 	});
 
@@ -55,6 +69,15 @@ describe('parseIcs', () => {
 		const events = parseIcs(SAMPLE, 'Test', 'blue');
 		const e = events.find((x) => x.uid === 'abc-789');
 		expect(e!.end.getTime() - e!.start.getTime()).toBe(60 * 60_000);
+	});
+
+	it('respects TZID parameter when present', () => {
+		const events = parseIcs(SAMPLE, 'Test', 'blue');
+		const e = events.find((x) => x.uid === 'tz-event');
+		expect(e).toBeTruthy();
+		// 4 AM Denver in May 2026 = MDT (UTC-6) → 10 AM UTC
+		expect(e!.start.toISOString()).toBe('2026-05-09T10:00:00.000Z');
+		expect(e!.end.toISOString()).toBe('2026-05-09T11:00:00.000Z');
 	});
 
 	it('attaches feedName + color to every event', () => {
