@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import UserEditModal from '$lib/components/UserEditModal.svelte';
+	import CalendarFeedsEditor from '$lib/components/CalendarFeedsEditor.svelte';
 	import { colorVar } from '$lib/colors';
 	import type { PageData } from './$types';
 	import type { User, CalendarFeed } from '$lib/server/schema';
@@ -9,6 +10,18 @@
 
 	let modalOpen = $state(false);
 	let editing = $state<User | null>(null);
+
+	const sharedFeeds = $derived(data.feeds.filter((f: CalendarFeed) => f.userId === null));
+
+	function countsFor(userId: number) {
+		const calendars = data.feeds.filter((f) => f.userId === userId).length;
+		const lists = data.lists.filter((l) => l.ownerId === userId && l.kind === 'chores').length;
+		return { calendars, lists };
+	}
+
+	function pluralize(n: number, singular: string, plural = singular + 's') {
+		return `${n} ${n === 1 ? singular : plural}`;
+	}
 
 	function openCreate() {
 		editing = null;
@@ -36,6 +49,7 @@
 
 <div class="px-4 sm:px-8 pb-10 max-w-3xl w-full mx-auto flex-1">
 	{#each data.users as u (u.id)}
+		{@const counts = countsFor(u.id)}
 		<button
 			class="card"
 			style="--c: {colorVar(u.color)}"
@@ -47,7 +61,8 @@
 			<div class="flex-1 text-left">
 				<div class="font-bold text-lg">{u.name}</div>
 				<div class="text-sm text-[color:var(--color-muted)]">
-					{u.color}
+					{pluralize(counts.calendars, 'calendar')} ·
+					{pluralize(counts.lists, 'task list')}
 				</div>
 			</div>
 			<div class="text-[color:var(--color-muted)]">›</div>
@@ -57,6 +72,23 @@
 			No people yet. Add one to get started.
 		</p>
 	{/each}
+
+	<section class="shared-section" data-testid="shared-calendars">
+		<header class="flex items-center gap-2 mb-1">
+			<span class="shared-icon" aria-hidden="true">🏡</span>
+			<h2 class="font-bold text-lg">Shared Calendars</h2>
+		</header>
+		<p class="text-xs text-[color:var(--color-muted)] mb-3">
+			Calendars not tied to one person — Family, Trips, Birthdays. Always visible
+			under the "Shared" filter chip on the calendar.
+		</p>
+		<CalendarFeedsEditor
+			feeds={sharedFeeds}
+			userId={null}
+			defaultColor="orange"
+			testIdPrefix="shared-feed"
+		/>
+	</section>
 </div>
 
 <UserEditModal
@@ -92,5 +124,15 @@
 		border-radius: 9999px;
 		background: var(--c);
 		flex-shrink: 0;
+	}
+	.shared-section {
+		background: white;
+		padding: 1.25rem 1.25rem 1rem;
+		border-radius: 1.1rem;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		margin-top: 1.25rem;
+	}
+	.shared-icon {
+		font-size: 1.4rem;
 	}
 </style>

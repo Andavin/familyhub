@@ -14,13 +14,17 @@ test.describe('people', () => {
 	});
 
 	test('add a calendar link to a person', async ({ page }) => {
-		// Open the first existing user
-		await page.getByText('Mark', { exact: true }).click();
+		// Open the first existing user (Mark)
+		await page.getByTestId('user-card-1').click();
 
 		// Calendar Links section is visible only when editing
 		await page.getByTestId('feed-name-input').fill('Mark Personal');
 		await page.getByTestId('feed-url-input').fill('https://example.com/cal.ics');
+		const addResp = page.waitForResponse((r) =>
+			r.url().endsWith('/api/calendar-feeds') && r.request().method() === 'POST'
+		);
 		await page.getByTestId('feed-add-btn').click();
+		await addResp;
 
 		// Persisted via API
 		const feeds = await page.evaluate(async () => {
@@ -31,6 +35,25 @@ test.describe('people', () => {
 		);
 		expect(found).toBeTruthy();
 		expect(found!.url).toBe('https://example.com/cal.ics');
+	});
+
+	test('add a shared calendar link', async ({ page }) => {
+		await page.getByTestId('shared-feed-name-input').fill('Family');
+		await page.getByTestId('shared-feed-url-input').fill('https://example.com/family.ics');
+		const addResp = page.waitForResponse((r) =>
+			r.url().endsWith('/api/calendar-feeds') && r.request().method() === 'POST'
+		);
+		await page.getByTestId('shared-feed-add-btn').click();
+		await addResp;
+
+		const feeds = await page.evaluate(async () => {
+			return await fetch('/api/calendar-feeds').then((r) => r.json());
+		});
+		const found = (feeds as { name: string; userId: number | null }[]).find(
+			(f) => f.name === 'Family'
+		);
+		expect(found).toBeTruthy();
+		expect(found!.userId).toBeNull();
 	});
 
 	test('add a new person and a personal list', async ({ page }) => {
