@@ -67,11 +67,11 @@
 		toastTimer = setTimeout(() => (toast = ''), 2400);
 	}
 
-	async function complete(t: Task) {
+	async function complete(t: Task, done: boolean) {
 		await fetch(`/api/tasks/${t.id}/complete`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: '{}'
+			body: JSON.stringify({ action: done ? 'complete' : 'uncomplete' })
 		});
 		await invalidateAll();
 	}

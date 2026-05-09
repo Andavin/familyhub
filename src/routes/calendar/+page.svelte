@@ -121,11 +121,11 @@
 
 	let completedExpanded = $state(false);
 
-	async function toggleComplete(t: Task) {
+	async function setComplete(t: Task, done: boolean) {
 		await fetch(`/api/tasks/${t.id}/complete`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: '{}'
+			body: JSON.stringify({ action: done ? 'complete' : 'uncomplete' })
 		});
 		await invalidateAll();
 	}
@@ -213,7 +213,7 @@
 							color={p.color}
 							size={20}
 							label={`Mark "${p.task.title}" complete`}
-							onchange={() => p.task && toggleComplete(p.task)}
+							onchange={(next) => p.task && setComplete(p.task, next)}
 						/>
 					{:else if p.kind === 'ghost'}
 						<span class="rdot big" aria-hidden="true"></span>
@@ -263,7 +263,7 @@
 									color={userColor(t.assigneeId)}
 									size={20}
 									label={`Mark "${t.title}" incomplete`}
-									onchange={() => toggleComplete(t)}
+									onchange={(next) => setComplete(t, next)}
 								/>
 								<div class="flex-1 min-w-0">
 									<div class="font-medium truncate done-title">{t.title}</div>

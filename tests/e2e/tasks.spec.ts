@@ -198,6 +198,68 @@ test.describe('tasks', () => {
 		expect(apiCount).toBe(1);
 	});
 
+	test('completing a recurring task twice advances twice (no surprise rewind)', async ({
+		page
+	}) => {
+		const firstCol = page.getByTestId(/^column-/).first();
+		const colTestId = await firstCol.getAttribute('data-testid');
+		const listId = colTestId!.split('-')[1];
+
+		const today = new Date();
+		today.setHours(9, 0, 0, 0);
+		await page.evaluate(
+			async ([lid, iso]) => {
+				await fetch('/api/tasks', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						listId: Number(lid),
+						title: 'Twice-completed chore',
+						dueAt: iso,
+						rrule: 'FREQ=WEEKLY'
+					})
+				});
+			},
+			[listId, today.toISOString()]
+		);
+		await page.reload();
+
+		// First completion: dueAt advances to next week (one log entry exists).
+		const allRows = firstCol.locator('[data-testid="task-row"]', {
+			hasText: 'Twice-completed chore'
+		});
+		await allRows
+			.first()
+			.getByRole('button', { name: /Mark "Twice-completed chore" complete/i })
+			.click();
+		// Wait for state to settle: row disappears from Today
+		await expect(allRows).toHaveCount(0, { timeout: 5000 });
+
+		// Open Scheduled — the same task now appears with dueAt = +7d.
+		await firstCol.getByTestId(`toggle-scheduled-${listId}`).click();
+		await expect(allRows).toHaveCount(1);
+
+		// Second completion: tap the empty circle on the Scheduled row.
+		// This MUST advance to +14d, not rewind to today.
+		await allRows
+			.first()
+			.getByRole('button', { name: /Mark "Twice-completed chore" complete/i })
+			.click();
+
+		// dueAt should now be 14 days from today
+		const due = await page.evaluate(async () => {
+			const rows = await fetch('/api/tasks').then((r) => r.json());
+			return (rows as { title: string; dueAt: string }[]).find(
+				(r) => r.title === 'Twice-completed chore'
+			)?.dueAt;
+		});
+		expect(due).toBeTruthy();
+		const delta = new Date(due as string).getTime() - Date.now();
+		const days = delta / 86_400_000;
+		expect(days).toBeGreaterThan(13);
+		expect(days).toBeLessThan(15);
+	});
+
 	test('delete from detail modal asks for confirmation', async ({ page }) => {
 		const firstCol = page.getByTestId(/^column-/).first();
 		const input = firstCol.getByTestId('add-task-input');

@@ -6,7 +6,8 @@
 	type Props = {
 		task: Task;
 		color: string;
-		onComplete: (task: Task) => void;
+		// `done` is the new desired state from the checkbox toggle.
+		onComplete: (task: Task, done: boolean) => void;
 		onopen?: (task: Task) => void;
 	};
 	let { task, color, onComplete, onopen }: Props = $props();
@@ -34,7 +35,7 @@
 		checked={completed}
 		{color}
 		label={completed ? `Mark "${task.title}" incomplete` : `Mark "${task.title}" complete`}
-		onchange={() => onComplete(task)}
+		onchange={(next) => onComplete(task, next)}
 	/>
 	<div
 		class="flex-1 min-w-0 cursor-pointer"
