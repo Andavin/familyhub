@@ -42,6 +42,12 @@
 					class:active={page.url.pathname.startsWith('/templates')}
 					>Templates</a
 				>
+				<a
+					href="/people"
+					class="px-3 py-1.5 rounded-full font-medium transition-colors"
+					class:active={page.url.pathname.startsWith('/people')}
+					>People</a
+				>
 			</div>
 		</nav>
 		<main class="flex-1 flex flex-col min-h-0">
