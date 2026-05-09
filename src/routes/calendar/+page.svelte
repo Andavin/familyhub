@@ -90,6 +90,10 @@
 		color: string;
 		kind: 'event' | 'reminder' | 'ghost';
 		time: number;
+		// Whether this pill belongs in a specific hour slot in the day view.
+		// false for: all-day events, reminders without dueHasTime, ghosts of
+		// untimed recurring tasks. Those go in the "All day" section.
+		hasTime: boolean;
 		task?: Task;
 		event?: EventDetail;
 		location?: string | null;
@@ -121,6 +125,7 @@
 					color: e.color ?? 'blue',
 					kind: 'event',
 					time: start.getTime(),
+					hasTime: !e.allDay,
 					endTime: end.getTime(),
 					location: e.location,
 					allDay: e.allDay,
@@ -148,6 +153,7 @@
 					color: userColor(t.assigneeId),
 					kind: 'reminder',
 					time: due.getTime(),
+					hasTime: t.dueHasTime,
 					task: t
 				});
 			}
@@ -164,7 +170,8 @@
 					label: g.title,
 					color: g.color,
 					kind: 'ghost',
-					time: g.at
+					time: g.at,
+					hasTime: t?.dueHasTime ?? false
 				});
 			}
 		}
@@ -200,6 +207,9 @@
 	});
 	const dayPills = $derived(selected ? pillsForDay(selected) : []);
 	const dayDone = $derived(selected ? completedForDay(selected) : []);
+	const untimedPills = $derived(dayPills.filter((p) => !p.hasTime));
+	const timedPills = $derived(dayPills.filter((p) => p.hasTime));
+	const hourSlots = Array.from({ length: 24 }, (_, h) => h);
 
 	let completedExpanded = $state(false);
 	let eventModalOpen = $state(false);
@@ -315,67 +325,97 @@
 				</span>
 			</div>
 		</header>
-		<div class="day-list" data-testid="day-list">
-			{#each dayPills as p (p.key)}
-				{@const meta = p.kind === 'event' && p.allDay
-					? '· All day'
+		{#snippet pillRow(p: Pill)}
+			{@const meta =
+				p.kind === 'event' && p.allDay
+					? 'All day'
 					: p.kind === 'event' && p.endTime && p.endTime !== p.time
-						? '· ' +
-							new Date(p.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) +
+						? new Date(p.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) +
 							' – ' +
-							new Date(p.endTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-						: '· ' +
-							new Date(p.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-				{#if p.kind === 'event' && p.event}
-					<button
-						type="button"
-						class="day-row clickable"
-						style="--pc: {colorOrLiteral(p.color)}"
-						onclick={() => openEvent(p.event!)}
-					>
-						<span class="ebar" aria-hidden="true"></span>
-						<div class="flex-1 min-w-0 text-left">
-							<div class="font-medium truncate">{p.label}</div>
-							<div class="text-xs text-[color:var(--color-muted)]">
-								Event {meta}
-							</div>
-							{#if p.location}
-								<div class="text-xs text-[color:var(--color-muted)] truncate">
-									📍 {p.location}
-								</div>
-							{/if}
+							new Date(p.endTime).toLocaleTimeString([], {
+								hour: 'numeric',
+								minute: '2-digit'
+							})
+						: p.hasTime
+							? new Date(p.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+							: ''}
+			{@const kindLabel =
+				p.kind === 'event' ? 'Event' : p.kind === 'ghost' ? 'Repeats' : 'Reminder'}
+			{#if p.kind === 'event' && p.event}
+				<button
+					type="button"
+					class="day-row clickable"
+					style="--pc: {colorOrLiteral(p.color)}"
+					onclick={() => openEvent(p.event!)}
+				>
+					<span class="ebar" aria-hidden="true"></span>
+					<div class="flex-1 min-w-0 text-left">
+						<div class="font-medium truncate">{p.label}</div>
+						<div class="text-xs text-[color:var(--color-muted)]">
+							{kindLabel}{meta ? ' · ' + meta : ''}
 						</div>
-					</button>
-				{:else}
-					<div
-						class="day-row"
-						class:ghost={p.kind === 'ghost'}
-						style="--pc: {colorOrLiteral(p.color)}"
-					>
-						{#if p.kind === 'reminder' && p.task}
-							<Checkbox
-								checked={false}
-								color={p.color}
-								size={20}
-								label={`Mark "${p.task.title}" complete`}
-								onchange={(next) => p.task && setComplete(p.task, next)}
-							/>
-						{:else}
-							<span class="rdot big" aria-hidden="true"></span>
-						{/if}
-						<div class="flex-1 min-w-0">
-							<div class="font-medium truncate">{p.label}</div>
-							<div class="text-xs text-[color:var(--color-muted)]">
-								{p.kind === 'ghost' ? 'Repeats' : 'Reminder'} {meta}
+						{#if p.location}
+							<div class="text-xs text-[color:var(--color-muted)] truncate">
+								📍 {p.location}
 							</div>
+						{/if}
+					</div>
+				</button>
+			{:else}
+				<div
+					class="day-row"
+					class:ghost={p.kind === 'ghost'}
+					style="--pc: {colorOrLiteral(p.color)}"
+				>
+					{#if p.kind === 'reminder' && p.task}
+						<Checkbox
+							checked={false}
+							color={p.color}
+							size={20}
+							label={`Mark "${p.task.title}" complete`}
+							onchange={(next) => p.task && setComplete(p.task, next)}
+						/>
+					{:else}
+						<span class="rdot big" aria-hidden="true"></span>
+					{/if}
+					<div class="flex-1 min-w-0">
+						<div class="font-medium truncate">{p.label}</div>
+						<div class="text-xs text-[color:var(--color-muted)]">
+							{kindLabel}{meta ? ' · ' + meta : ''}
 						</div>
 					</div>
-				{/if}
-			{:else}
-				{#if dayDone.length === 0}
-					<p class="text-[color:var(--color-muted)] text-sm">Nothing scheduled.</p>
-				{/if}
-			{/each}
+				</div>
+			{/if}
+		{/snippet}
+
+		<div class="day-list" data-testid="day-list">
+			{#if untimedPills.length > 0}
+				<div class="all-day">
+					<div class="all-day-label">All day</div>
+					<div class="all-day-rows">
+						{#each untimedPills as p (p.key)}
+							{@render pillRow(p)}
+						{/each}
+					</div>
+				</div>
+			{/if}
+
+			<div class="hour-grid">
+				{#each hourSlots as h (h)}
+					<div class="hour-row" class:filled={timedPills.some((p) => new Date(p.time).getHours() === h)}>
+						<span class="hour-label">
+							{new Date(2026, 0, 1, h).toLocaleTimeString([], {
+								hour: 'numeric'
+							})}
+						</span>
+						<div class="hour-content">
+							{#each timedPills.filter((p) => new Date(p.time).getHours() === h) as p (p.key)}
+								{@render pillRow(p)}
+							{/each}
+						</div>
+					</div>
+				{/each}
+			</div>
 		</div>
 
 		{#if dayDone.length > 0}
@@ -604,6 +644,56 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.85rem;
+	}
+	.all-day {
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--color-divider);
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	.all-day-label {
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--color-muted);
+	}
+	.all-day-rows {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+	}
+	.hour-grid {
+		display: flex;
+		flex-direction: column;
+		max-height: 60vh;
+		overflow-y: auto;
+		margin-top: 0.25rem;
+	}
+	.hour-row {
+		display: grid;
+		grid-template-columns: 48px 1fr;
+		gap: 0.5rem;
+		min-height: 32px;
+		padding: 0.25rem 0;
+		border-top: 1px solid var(--color-divider);
+		align-items: start;
+	}
+	.hour-row:first-child {
+		border-top: none;
+	}
+	.hour-label {
+		font-size: 0.7rem;
+		color: var(--color-muted);
+		text-align: right;
+		padding-top: 0.15rem;
+	}
+	.hour-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		min-width: 0;
 	}
 	.day-row {
 		display: flex;
