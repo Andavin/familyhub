@@ -1,6 +1,6 @@
 {
-	"name": "FamilyHub",
-	"short_name": "FamilyHub",
+	"name": "Family Hub",
+	"short_name": "Family Hub",
 	"description": "Family chores, calendar, and groceries.",
 	"start_url": "/",
 	"scope": "/",

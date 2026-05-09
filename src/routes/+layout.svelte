@@ -6,7 +6,7 @@
 </script>
 
 <svelte:head>
-	<title>FamilyHub</title>
+	<title>Family Hub</title>
 </svelte:head>
 
 {#if page.url.pathname === '/login'}
@@ -15,7 +15,7 @@
 	<div class="min-h-screen flex flex-col">
 		<nav class="px-4 sm:px-8 pt-4 pb-2 flex items-center justify-between">
 			<a href="/" class="font-display font-bold text-2xl text-[color:var(--color-ink)]"
-				>FamilyHub</a
+				>Family Hub</a
 			>
 			<div class="flex items-center gap-1 text-sm">
 				<a

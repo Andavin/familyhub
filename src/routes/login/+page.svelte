@@ -32,7 +32,7 @@
 	>
 		<div class="text-center space-y-1">
 			<div class="text-4xl">🏠</div>
-			<h1 class="text-2xl font-display font-bold">FamilyHub</h1>
+			<h1 class="text-2xl font-display font-bold">Family Hub</h1>
 			<p class="text-sm text-[color:var(--color-muted)]">Enter the family password</p>
 		</div>
 		<input

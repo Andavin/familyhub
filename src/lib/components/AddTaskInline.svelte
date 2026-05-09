@@ -6,7 +6,7 @@
 		placeholder?: string;
 		onsubmit: (title: string) => Promise<void> | void;
 	};
-	let { color, placeholder = 'New Reminder', onsubmit }: Props = $props();
+	let { color, placeholder = 'New Task', onsubmit }: Props = $props();
 
 	let value = $state('');
 	let busy = $state(false);
