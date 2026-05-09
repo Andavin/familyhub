@@ -12,9 +12,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/lib/server/migrate.ts",
-    "db:seed": "tsx src/lib/server/seed.ts"
+    "db:push": "drizzle-kit push",
+    "db:seed": "tsx src/lib/server/seed.ts",
+    "db:reset": "tsx src/lib/server/reset.ts"
   },
   "dependencies": {
     "@sveltejs/adapter-node": "^5.2.13",

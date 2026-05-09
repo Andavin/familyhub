@@ -22,6 +22,9 @@ export const lists = sqliteTable(
 		kind: text('kind', { enum: ['chores', 'grocery', 'general'] })
 			.notNull()
 			.default('chores'),
+		// Marker for the auto-created "Unassigned" inbox list. System lists can't
+		// be deleted from the UI and are excluded from list pickers.
+		system: text('system').notNull().default('none'),
 		displayOrder: integer('display_order').notNull().default(0)
 	},
 	(t) => ({

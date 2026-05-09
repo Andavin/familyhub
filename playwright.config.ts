@@ -18,9 +18,10 @@ export default defineConfig({
 		}
 	],
 	webServer: {
-		command: 'pnpm run build && DATABASE_URL=./data/test.db FAMILY_PASSWORD=letmein pnpm run preview',
+		command:
+			'pnpm run build && DATABASE_URL=./data/test.db pnpm run db:reset && DATABASE_URL=./data/test.db FAMILY_PASSWORD=letmein pnpm run preview',
 		port: 4173,
 		reuseExistingServer: !process.env.CI,
-		timeout: 120_000
+		timeout: 180_000
 	}
 });
