@@ -25,13 +25,18 @@
 		return colorVar(c);
 	}
 
-	function formatDate(d: Date) {
-		return d.toLocaleDateString([], {
+	function formatDate(d: Date, asUtc = false) {
+		// All-day dates are stored as UTC midnight by the parser. Format them
+		// in UTC so a viewer west of UTC doesn't see the date roll back a day.
+		const opts: Intl.DateTimeFormatOptions = {
 			weekday: 'long',
 			month: 'long',
 			day: 'numeric',
-			year: d.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
-		});
+			timeZone: asUtc ? 'UTC' : undefined
+		};
+		const year = asUtc ? d.getUTCFullYear() : d.getFullYear();
+		if (year !== new Date().getFullYear()) opts.year = 'numeric';
+		return d.toLocaleDateString([], opts);
 	}
 
 	function formatTime(d: Date) {
@@ -40,13 +45,11 @@
 
 	function timeRange(ev: EventDetail) {
 		if (ev.allDay) {
-			// All-day events span [start, end). If the span is one day, show
-			// just that day; otherwise show "Mon May 11 – Wed May 13".
 			const dayMs = 86_400_000;
 			const days = Math.round((ev.end.getTime() - ev.start.getTime()) / dayMs);
-			if (days <= 1) return formatDate(ev.start);
+			if (days <= 1) return formatDate(ev.start, true);
 			const inclusiveEnd = new Date(ev.end.getTime() - dayMs);
-			return `${formatDate(ev.start)} – ${formatDate(inclusiveEnd)}`;
+			return `${formatDate(ev.start, true)} – ${formatDate(inclusiveEnd, true)}`;
 		}
 		const sameDay =
 			ev.start.getFullYear() === ev.end.getFullYear() &&

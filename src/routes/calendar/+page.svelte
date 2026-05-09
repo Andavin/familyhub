@@ -217,6 +217,9 @@
 	let eventBeingShown = $state<EventDetail | null>(null);
 	let taskModalOpen = $state(false);
 	let taskBeingEdited = $state<Task | null>(null);
+	let overflowOpen = $state(false);
+	let overflowItems = $state<Pill[]>([]);
+	let overflowHourLabel = $state('');
 
 	function openEvent(ev: EventDetail) {
 		eventBeingShown = ev;
@@ -228,6 +231,14 @@
 		taskModalOpen = true;
 	}
 
+	function openOverflow(hour: number, items: Pill[]) {
+		overflowItems = items;
+		overflowHourLabel = new Date(2026, 0, 1, hour).toLocaleTimeString([], {
+			hour: 'numeric'
+		});
+		overflowOpen = true;
+	}
+
 	async function setComplete(t: Task, done: boolean) {
 		await fetch(`/api/tasks/${t.id}/complete`, {
 			method: 'POST',
@@ -237,6 +248,41 @@
 		await invalidateAll();
 	}
 </script>
+
+{#snippet pillRow(p: Pill)}
+	{#if p.kind === 'event' && p.event}
+		<button
+			type="button"
+			class="event-block"
+			style="--pc: {colorOrLiteral(p.color)}"
+			onclick={() => openEvent(p.event!)}
+		>
+			<span class="event-title">{p.label}</span>
+		</button>
+	{:else if p.kind === 'reminder' && p.task}
+		<div class="task-line" style="--pc: {colorOrLiteral(p.color)}">
+			<Checkbox
+				checked={false}
+				color={p.color}
+				size={18}
+				label={`Mark "${p.task.title}" complete`}
+				onchange={(next) => p.task && setComplete(p.task, next)}
+			/>
+			<button
+				type="button"
+				class="task-title-btn"
+				onclick={() => p.task && openTaskDetail(p.task)}
+			>
+				{p.label}
+			</button>
+		</div>
+	{:else}
+		<div class="ghost-line" style="--pc: {colorOrLiteral(p.color)}">
+			<span class="rdot small" aria-hidden="true"></span>
+			<span class="ghost-title">{p.label}</span>
+		</div>
+	{/if}
+{/snippet}
 
 <section class="px-4 sm:px-8 pb-3 flex items-center justify-between gap-3 flex-wrap">
 	<div>
@@ -333,40 +379,6 @@
 				</span>
 			</div>
 		</header>
-		{#snippet pillRow(p: Pill)}
-			{#if p.kind === 'event' && p.event}
-				<button
-					type="button"
-					class="event-block"
-					style="--pc: {colorOrLiteral(p.color)}"
-					onclick={() => openEvent(p.event!)}
-				>
-					<span class="event-title">{p.label}</span>
-				</button>
-			{:else if p.kind === 'reminder' && p.task}
-				<div class="task-line" style="--pc: {colorOrLiteral(p.color)}">
-					<Checkbox
-						checked={false}
-						color={p.color}
-						size={18}
-						label={`Mark "${p.task.title}" complete`}
-						onchange={(next) => p.task && setComplete(p.task, next)}
-					/>
-					<button
-						type="button"
-						class="task-title-btn"
-						onclick={() => p.task && openTaskDetail(p.task)}
-					>
-						{p.label}
-					</button>
-				</div>
-			{:else}
-				<div class="ghost-line" style="--pc: {colorOrLiteral(p.color)}">
-					<span class="rdot small" aria-hidden="true"></span>
-					<span class="ghost-title">{p.label}</span>
-				</div>
-			{/if}
-		{/snippet}
 
 		<div class="day-list" data-testid="day-list">
 			{#if untimedPills.length > 0}
@@ -382,16 +394,30 @@
 
 			<div class="hour-grid">
 				{#each hourSlots as h (h)}
-					<div class="hour-row" class:filled={timedPills.some((p) => new Date(p.time).getHours() === h)}>
+					{@const inHour = timedPills.filter((p) => new Date(p.time).getHours() === h)}
+					{@const visible = inHour.length <= 2 ? inHour : inHour.slice(0, 1)}
+					{@const overflow = inHour.length - visible.length}
+					<div class="hour-row" class:filled={inHour.length > 0}>
 						<span class="hour-label">
 							{new Date(2026, 0, 1, h).toLocaleTimeString([], {
 								hour: 'numeric'
 							})}
 						</span>
 						<div class="hour-content">
-							{#each timedPills.filter((p) => new Date(p.time).getHours() === h) as p (p.key)}
-								{@render pillRow(p)}
+							{#each visible as p (p.key)}
+								<div class="hour-cell">
+									{@render pillRow(p)}
+								</div>
 							{/each}
+							{#if overflow > 0}
+								<button
+									type="button"
+									class="hour-cell overflow-btn"
+									onclick={() => openOverflow(h, inHour)}
+								>
+									+{overflow} more
+								</button>
+							{/if}
 						</div>
 					</div>
 				{/each}
@@ -461,6 +487,27 @@
 		await invalidateAll();
 	}}
 />
+
+{#if overflowOpen}
+	<div class="backdrop" role="presentation" onclick={() => (overflowOpen = false)}></div>
+	<div class="modal hour-overflow-modal" role="dialog" aria-modal="true" aria-label="Hour items">
+		<header class="flex items-center justify-between mb-3">
+			<h2 class="text-lg font-display font-bold">{overflowHourLabel}</h2>
+			<button
+				class="text-xl text-[color:var(--color-muted)]"
+				onclick={() => (overflowOpen = false)}
+				aria-label="Close"
+			>
+				✕
+			</button>
+		</header>
+		<div class="overflow-list">
+			{#each overflowItems as p (p.key)}
+				<div class="overflow-item">{@render pillRow(p)}</div>
+			{/each}
+		</div>
+	</div>
+{/if}
 
 <style>
 	.nav-btn {
@@ -668,9 +715,27 @@
 	}
 	.hour-content {
 		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
+		gap: 0.4rem;
 		min-width: 0;
+	}
+	.hour-cell {
+		flex: 1 1 0;
+		min-width: 0;
+	}
+	.overflow-btn {
+		padding: 0.4rem 0.55rem;
+		border-radius: 0.4rem;
+		background: var(--color-canvas);
+		color: var(--color-muted);
+		font-size: 0.78rem;
+		font-weight: 600;
+		text-align: center;
+		cursor: pointer;
+		transition: background 100ms ease;
+	}
+	.overflow-btn:hover {
+		background: var(--color-canvas-2);
+		color: var(--color-ink);
 	}
 	.day-row {
 		display: flex;
@@ -776,5 +841,30 @@
 	.completed-list .done-title {
 		text-decoration: line-through;
 		color: var(--color-muted);
+	}
+	.backdrop {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.4);
+		z-index: 40;
+	}
+	.modal.hour-overflow-modal {
+		position: fixed;
+		left: 50%;
+		top: 50%;
+		transform: translate(-50%, -50%);
+		width: min(440px, calc(100vw - 2rem));
+		max-height: 90vh;
+		overflow-y: auto;
+		background: white;
+		border-radius: 1.5rem;
+		padding: 1.25rem;
+		z-index: 50;
+		box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.25);
+	}
+	.overflow-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.55rem;
 	}
 </style>
