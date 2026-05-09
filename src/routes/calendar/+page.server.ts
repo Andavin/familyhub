@@ -3,6 +3,14 @@ import { db } from '$lib/server/db';
 import { tasks, users, lists } from '$lib/server/schema';
 import { asc, isNotNull } from 'drizzle-orm';
 import { fetchEvents } from '$lib/server/caldav';
+import { futureOccurrences } from '$lib/server/recurrence';
+
+export type GhostOccurrence = {
+	taskId: number;
+	title: string;
+	color: string;
+	at: number; // ms
+};
 
 export const load: PageServerLoad = async ({ url }) => {
 	const monthParam = url.searchParams.get('month');
@@ -24,10 +32,28 @@ export const load: PageServerLoad = async ({ url }) => {
 		fetchEvents(gridStart, gridEnd)
 	]);
 
+	// Project future occurrences of recurring tasks into the visible grid.
+	const ghosts: GhostOccurrence[] = [];
+	const usersById = new Map(u.map((x) => [x.id, x]));
+	for (const t of dueTasks) {
+		if (!t.rrule || !t.dueAt) continue;
+		const occurrences = futureOccurrences(
+			t.rrule,
+			new Date(t.dueAt),
+			gridStart,
+			gridEnd
+		);
+		const userColor = usersById.get(t.assigneeId ?? -1)?.color ?? 'orange';
+		for (const at of occurrences) {
+			ghosts.push({ taskId: t.id, title: t.title, color: userColor, at: at.getTime() });
+		}
+	}
+
 	return {
 		users: u,
 		lists: l,
 		tasks: dueTasks,
+		ghosts,
 		events,
 		month: { year: ref.getFullYear(), month: ref.getMonth() }
 	};

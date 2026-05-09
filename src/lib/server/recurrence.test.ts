@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRrule, nextOccurrence, describeRrule } from './recurrence';
+import { buildRrule, nextOccurrence, describeRrule, futureOccurrences } from './recurrence';
 
 describe('recurrence', () => {
 	it('returns null when no frequency', () => {
@@ -50,5 +50,38 @@ describe('recurrence', () => {
 		const r = buildRrule('daily', { count: 1 });
 		const next = nextOccurrence(r as string, new Date('2030-01-01'));
 		expect(next).toBeNull();
+	});
+});
+
+describe('futureOccurrences', () => {
+	it('projects daily rule into a 7-day window', () => {
+		const r = buildRrule('daily') as string;
+		const dtstart = new Date('2026-05-09T09:00:00Z');
+		const occ = futureOccurrences(
+			r,
+			dtstart,
+			new Date('2026-05-09T00:00:00Z'),
+			new Date('2026-05-16T00:00:00Z')
+		);
+		expect(occ.length).toBeGreaterThanOrEqual(5);
+		expect(occ.length).toBeLessThanOrEqual(7);
+		expect(occ[0].getTime()).toBeGreaterThan(dtstart.getTime());
+	});
+
+	it('returns empty when range is before dtstart', () => {
+		const r = buildRrule('daily') as string;
+		const dtstart = new Date('2026-05-09T09:00:00Z');
+		const occ = futureOccurrences(
+			r,
+			dtstart,
+			new Date('2026-04-01T00:00:00Z'),
+			new Date('2026-04-30T00:00:00Z')
+		);
+		expect(occ).toEqual([]);
+	});
+
+	it('returns empty for invalid rrule', () => {
+		const occ = futureOccurrences('garbage', new Date(), new Date(), new Date());
+		expect(occ).toEqual([]);
 	});
 });

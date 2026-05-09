@@ -37,7 +37,7 @@
 		key: string;
 		label: string;
 		color: string;
-		kind: 'event' | 'reminder';
+		kind: 'event' | 'reminder' | 'ghost';
 		time: number;
 	};
 
@@ -70,6 +70,18 @@
 					color: userColor(t.assigneeId),
 					kind: 'reminder',
 					time: due.getTime()
+				});
+			}
+		}
+		for (const g of data.ghosts) {
+			const at = new Date(g.at);
+			if (sameDay(at, d)) {
+				pills.push({
+					key: 'g' + g.taskId + g.at,
+					label: g.title,
+					color: g.color,
+					kind: 'ghost',
+					time: g.at
 				});
 			}
 		}
@@ -135,8 +147,13 @@
 					<div class="num">{d.getDate()}</div>
 					<div class="pills">
 						{#each pills.slice(0, 3) as p (p.key)}
-							<div class="pill" class:reminder={p.kind === 'reminder'} style="--pc: {colorOrLiteral(p.color)}">
-								{#if p.kind === 'reminder'}<span class="rdot"></span>{/if}
+							<div
+								class="pill"
+								class:reminder={p.kind === 'reminder' || p.kind === 'ghost'}
+								class:ghost={p.kind === 'ghost'}
+								style="--pc: {colorOrLiteral(p.color)}"
+							>
+								{#if p.kind === 'reminder' || p.kind === 'ghost'}<span class="rdot"></span>{/if}
 								<span class="plabel">{p.label}</span>
 							</div>
 						{/each}
@@ -165,8 +182,8 @@
 		</header>
 		<div class="day-list">
 			{#each dayPills as p (p.key)}
-				<div class="day-row" style="--pc: {colorOrLiteral(p.color)}">
-					{#if p.kind === 'reminder'}
+				<div class="day-row" class:ghost={p.kind === 'ghost'} style="--pc: {colorOrLiteral(p.color)}">
+					{#if p.kind === 'reminder' || p.kind === 'ghost'}
 						<span class="rdot big"></span>
 					{:else}
 						<span class="ebar"></span>
@@ -174,7 +191,7 @@
 					<div class="flex-1 min-w-0">
 						<div class="font-medium truncate">{p.label}</div>
 						<div class="text-xs text-[color:var(--color-muted)]">
-							{p.kind === 'reminder' ? 'Reminder' : 'Event'} ·
+							{p.kind === 'event' ? 'Event' : p.kind === 'ghost' ? 'Repeats' : 'Reminder'} ·
 							{new Date(p.time).toLocaleTimeString([], {
 								hour: 'numeric',
 								minute: '2-digit'
@@ -282,6 +299,12 @@
 	.pill.reminder {
 		background: transparent;
 		color: var(--color-ink);
+	}
+	.pill.ghost {
+		opacity: 0.45;
+	}
+	.day-row.ghost {
+		opacity: 0.5;
 	}
 	.rdot {
 		width: 7px;

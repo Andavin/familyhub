@@ -49,3 +49,29 @@ export function describeRrule(rrule: string): string {
 		return rrule;
 	}
 }
+
+/**
+ * Project a recurring task's future instances into [rangeStart, rangeEnd].
+ * Anchored at `dtstart` (the task's current dueAt). Returns occurrence dates
+ * strictly after `dtstart` — used to render greyed-out "ghost" reminder pills
+ * on the calendar à la Apple Calendar.
+ */
+export function futureOccurrences(
+	rrule: string,
+	dtstart: Date,
+	rangeStart: Date,
+	rangeEnd: Date,
+	max = 100
+): Date[] {
+	let parsed: ReturnType<typeof RRule.fromString>;
+	try {
+		parsed = RRule.fromString(rrule);
+	} catch {
+		return [];
+	}
+	const opts: Partial<Options> = { ...parsed.origOptions, dtstart };
+	const rule = new RRule(opts);
+	const lower = new Date(Math.max(dtstart.getTime() + 1, rangeStart.getTime()));
+	const between = rule.between(lower, rangeEnd, true);
+	return between.slice(0, max);
+}
