@@ -89,34 +89,46 @@ test.describe('tasks', () => {
 		await expect(firstCol.getByText('!!').first()).toBeVisible();
 	});
 
-	test('future-due task lands in Scheduled, not Today', async ({ page }) => {
+	test('future-due hidden from Today, today-due shows in both Today and Scheduled', async ({
+		page
+	}) => {
 		const firstCol = page.getByTestId(/^column-/).first();
 		const colTestId = await firstCol.getAttribute('data-testid');
 		const listId = colTestId!.split('-')[1];
 
-		// Create a task due 7 days from now via API
-		const dueAt = new Date(Date.now() + 7 * 86_400_000);
+		const future = new Date(Date.now() + 7 * 86_400_000);
+		const todayDue = new Date();
+		todayDue.setHours(15, 0, 0, 0);
+
 		await page.evaluate(
-			async ([lid, iso]) => {
+			async ([lid, futureIso, todayIso]) => {
 				await fetch('/api/tasks', {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({ listId: Number(lid), title: 'Future task', dueAt: iso })
+					body: JSON.stringify({ listId: Number(lid), title: 'Future task', dueAt: futureIso })
+				});
+				await fetch('/api/tasks', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ listId: Number(lid), title: 'Today thing', dueAt: todayIso })
 				});
 			},
-			[listId, dueAt.toISOString()]
+			[listId, future.toISOString(), todayDue.toISOString()]
 		);
 
 		await page.reload();
 		await page.waitForLoadState('networkidle');
 
-		// Not in the Today portion of the column
-		// (we look for a row strictly *above* the Scheduled toggle)
-		await expect(firstCol.getByTestId(`toggle-scheduled-${listId}`)).toBeVisible();
+		// Future task only appears once Scheduled is expanded.
+		await expect(firstCol.getByText('Future task')).toHaveCount(0);
+		// Today-due task is visible in the main (Today) area immediately.
+		await expect(firstCol.getByText('Today thing')).toBeVisible();
 
-		// After expanding Scheduled, the task is visible
 		await firstCol.getByTestId(`toggle-scheduled-${listId}`).click();
+
+		// Both tasks now visible in the column (the today-due appears twice).
 		await expect(firstCol.getByText('Future task')).toBeVisible();
+		await expect(firstCol.getByText('Today thing')).toHaveCount(2);
 	});
 
 	test('delete from detail modal asks for confirmation', async ({ page }) => {

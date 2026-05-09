@@ -28,11 +28,15 @@
 		const cutoff = endOfToday();
 		return data.lists.map((list) => {
 			const listOpen = data.openTasks.filter((t) => t.listId === list.id);
+			// Today: needs attention now — no due date, overdue, or due today.
 			const today = listOpen.filter(
 				(t) => !t.dueAt || new Date(t.dueAt).getTime() <= cutoff
 			);
+			// Scheduled: every date-bound task (today, overdue, future) so the
+			// user has a single place to see and adjust scheduled work. This
+			// intentionally overlaps with Today for items due ≤ end of today.
 			const scheduled = listOpen
-				.filter((t) => t.dueAt && new Date(t.dueAt).getTime() > cutoff)
+				.filter((t) => t.dueAt)
 				.sort(
 					(a, b) =>
 						new Date(a.dueAt as Date).getTime() - new Date(b.dueAt as Date).getTime()
