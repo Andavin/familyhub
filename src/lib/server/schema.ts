@@ -67,7 +67,7 @@ export const tasks = sqliteTable(
 
 export type ChecklistItem = {
 	title: string;
-	assigneeRole: 'self' | 'partner' | 'shared' | number; // userId or role
+	listId: number; // which column the task lands in (deleted lists are pruned on delete)
 	offsetDays?: number;
 	notes?: string;
 };

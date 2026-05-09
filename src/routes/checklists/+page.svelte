@@ -24,13 +24,19 @@
 		toastTimer = setTimeout(() => (toast = ''), 2400);
 	}
 
+	function defaultListId(): number {
+		// Pick the inbox if available, otherwise the first list.
+		const inbox = data.lists.find((l) => l.system === 'inbox');
+		return inbox?.id ?? data.lists[0]?.id ?? 0;
+	}
+
 	function openNew() {
 		creating = true;
 		editing = null;
 		name = '';
 		description = '';
 		emoji = '📋';
-		items = [{ title: '', assigneeRole: 'shared' }];
+		items = [{ title: '', listId: defaultListId() }];
 	}
 
 	function openEdit(t: Checklist) {
@@ -48,7 +54,7 @@
 	}
 
 	function addRow() {
-		items = [...items, { title: '', assigneeRole: 'shared' }];
+		items = [...items, { title: '', listId: defaultListId() }];
 	}
 	function removeRow(idx: number) {
 		items = items.filter((_, i) => i !== idx);
@@ -170,12 +176,9 @@
 						class="field flex-1"
 						aria-label="Task title"
 					/>
-					<select bind:value={item.assigneeRole} class="field" aria-label="Assignee">
-						<option value="self">Self</option>
-						<option value="partner">Partner</option>
-						<option value="shared">Shared</option>
-						{#each data.users as u (u.id)}
-							<option value={u.id}>{u.name}</option>
+					<select bind:value={item.listId} class="field" aria-label="List">
+						{#each data.lists as l (l.id)}
+							<option value={l.id}>{l.name}</option>
 						{/each}
 					</select>
 					<button class="text-[color:var(--color-muted)] px-2" onclick={() => removeRow(i)} aria-label="Remove">✕</button>

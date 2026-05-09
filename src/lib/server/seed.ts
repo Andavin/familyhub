@@ -8,7 +8,7 @@ async function main() {
 		return;
 	}
 
-	const inserted = await db
+	const insertedUsers = await db
 		.insert(users)
 		.values([
 			{ name: 'Mark', color: 'blue', emoji: '🧔', displayOrder: 0 },
@@ -17,20 +17,36 @@ async function main() {
 		])
 		.returning();
 
-	for (const u of inserted) {
-		await db.insert(lists).values({
-			name: `${u.name}'s Tasks`,
-			color: u.color,
-			ownerId: u.id,
-			kind: 'chores',
-			displayOrder: u.displayOrder
-		});
+	const ownedLists: Record<string, number> = {};
+	for (const u of insertedUsers) {
+		const [l] = await db
+			.insert(lists)
+			.values({
+				name: `${u.name}'s Tasks`,
+				color: u.color,
+				ownerId: u.id,
+				kind: 'chores',
+				displayOrder: u.displayOrder
+			})
+			.returning();
+		ownedLists[u.name] = l.id;
 	}
 
-	await db.insert(lists).values([
-		{ name: 'Family', color: 'orange', ownerId: null, kind: 'chores', displayOrder: 100 },
-		{ name: 'Groceries', color: 'green', ownerId: null, kind: 'grocery', displayOrder: 200 }
-	]);
+	const [familyList] = await db
+		.insert(lists)
+		.values({ name: 'Family', color: 'orange', ownerId: null, kind: 'chores', displayOrder: 100 })
+		.returning();
+
+	await db.insert(lists).values({
+		name: 'Groceries',
+		color: 'green',
+		ownerId: null,
+		kind: 'grocery',
+		displayOrder: 200
+	});
+
+	const markList = ownedLists.Mark;
+	const partnerList = ownedLists.Partner;
 
 	await db.insert(checklists).values([
 		{
@@ -38,15 +54,15 @@ async function main() {
 			emoji: '✈️',
 			description: 'Everything we always need to do before leaving',
 			items: [
-				{ title: 'Pack chargers', assigneeRole: 'self' },
-				{ title: 'Pack toiletries', assigneeRole: 'partner' },
-				{ title: 'Empty trash', assigneeRole: 'self' },
-				{ title: 'Set thermostat to away', assigneeRole: 'self' },
-				{ title: 'Water plants', assigneeRole: 'partner' },
-				{ title: 'Lock back door', assigneeRole: 'self' },
-				{ title: 'Check passports', assigneeRole: 'shared' },
-				{ title: 'Confirm flights', assigneeRole: 'self' },
-				{ title: 'Stop mail hold', assigneeRole: 'partner' }
+				{ title: 'Pack chargers', listId: markList },
+				{ title: 'Pack toiletries', listId: partnerList },
+				{ title: 'Empty trash', listId: markList },
+				{ title: 'Set thermostat to away', listId: markList },
+				{ title: 'Water plants', listId: partnerList },
+				{ title: 'Lock back door', listId: markList },
+				{ title: 'Check passports', listId: familyList.id },
+				{ title: 'Confirm flights', listId: markList },
+				{ title: 'Stop mail hold', listId: partnerList }
 			]
 		},
 		{
@@ -54,11 +70,11 @@ async function main() {
 			emoji: '🧹',
 			description: 'Weekly cleaning rotation',
 			items: [
-				{ title: 'Vacuum living room', assigneeRole: 'self' },
-				{ title: 'Mop kitchen', assigneeRole: 'partner' },
-				{ title: 'Wash sheets', assigneeRole: 'shared' },
-				{ title: 'Take out trash', assigneeRole: 'self' },
-				{ title: 'Clean bathroom', assigneeRole: 'partner' }
+				{ title: 'Vacuum living room', listId: markList },
+				{ title: 'Mop kitchen', listId: partnerList },
+				{ title: 'Wash sheets', listId: familyList.id },
+				{ title: 'Take out trash', listId: markList },
+				{ title: 'Clean bathroom', listId: partnerList }
 			]
 		}
 	]);

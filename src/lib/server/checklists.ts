@@ -1,6 +1,7 @@
 import { db } from './db';
-import { tasks, lists, checklists, type ChecklistItem } from './schema';
+import { tasks, lists, checklists, type ChecklistItem, type List } from './schema';
 import { eq } from 'drizzle-orm';
+import { getOrCreateInbox } from './inbox';
 
 export type AppliedTaskSeed = {
 	listId: number;
@@ -12,61 +13,41 @@ export type AppliedTaskSeed = {
 
 /**
  * Resolve a checklist's items into concrete task seeds.
- * - 'self'    → first user (caller decides which is "self")
- * - 'partner' → second user
- * - 'shared'  → null assignee, shared list
- * - number    → explicit user id
+ *
+ * Each item names a target list. The task lands in that list, and inherits
+ * the list's `ownerId` as its assignee (so adding to "Mark's Tasks"
+ * automatically sets Mark as the assignee). Items pointing at the
+ * Unassigned inbox or any other shared list get a null assignee.
+ *
+ * If an item references a deleted list, it falls back to the inbox.
  */
 export function resolveChecklist(
 	items: ChecklistItem[],
-	userIds: { selfId: number; partnerId: number | null; sharedListId: number },
-	userListIdByUserId: Map<number, number>,
+	listsById: Map<number, List>,
+	inboxListId: number,
 	startDate: Date = new Date()
 ): AppliedTaskSeed[] {
-	const seeds: AppliedTaskSeed[] = [];
-	for (const item of items) {
-		let assigneeId: number | null = null;
-		let listId: number;
-
-		if (typeof item.assigneeRole === 'number') {
-			assigneeId = item.assigneeRole;
-			listId = userListIdByUserId.get(assigneeId) ?? userIds.sharedListId;
-		} else if (item.assigneeRole === 'self') {
-			assigneeId = userIds.selfId;
-			listId = userListIdByUserId.get(userIds.selfId) ?? userIds.sharedListId;
-		} else if (item.assigneeRole === 'partner') {
-			assigneeId = userIds.partnerId ?? userIds.selfId;
-			listId =
-				userListIdByUserId.get(userIds.partnerId ?? userIds.selfId) ?? userIds.sharedListId;
-		} else {
-			// shared
-			assigneeId = null;
-			listId = userIds.sharedListId;
-		}
-
+	return items.map((item) => {
+		const list = listsById.get(item.listId);
+		const listId = list?.id ?? inboxListId;
+		const assigneeId = list?.ownerId ?? null;
 		const dueAt =
 			typeof item.offsetDays === 'number'
 				? new Date(startDate.getTime() + item.offsetDays * 86_400_000)
 				: null;
-
-		seeds.push({
+		return {
 			listId,
 			assigneeId,
 			title: item.title,
 			notes: item.notes ?? null,
 			dueAt
-		});
-	}
-	return seeds;
+		};
+	});
 }
 
-/**
- * Apply a checklist by id: resolves items and inserts tasks atomically.
- * Returns the created task rows.
- */
 export async function applyChecklist(
 	checklistId: number,
-	opts: { selfUserId?: number; startDate?: Date } = {}
+	opts: { startDate?: Date } = {}
 ) {
 	const [cl] = await db
 		.select()
@@ -76,33 +57,25 @@ export async function applyChecklist(
 	if (!cl) throw new Error(`Checklist ${checklistId} not found`);
 
 	const allLists = await db.select().from(lists);
-	const userListIdByUserId = new Map<number, number>();
-	for (const l of allLists) {
-		if (l.ownerId !== null) userListIdByUserId.set(l.ownerId, l.id);
-	}
-
-	const sharedList =
-		allLists.find((l) => l.ownerId === null && l.kind === 'chores') ??
-		allLists.find((l) => l.ownerId === null);
-	if (!sharedList) throw new Error('No shared list configured');
-
-	// Pick "self" and "partner" by display order if not provided.
-	const ownerLists = allLists
-		.filter((l) => l.ownerId !== null)
-		.sort((a, b) => a.displayOrder - b.displayOrder);
-	const selfId = opts.selfUserId ?? ownerLists[0]?.ownerId ?? null;
-	const partnerId = ownerLists[1]?.ownerId ?? null;
-	if (selfId === null) throw new Error('No users configured');
-
-	const seeds = resolveChecklist(
-		cl.items,
-		{ selfId, partnerId, sharedListId: sharedList.id },
-		userListIdByUserId,
-		opts.startDate ?? new Date()
-	);
+	const listsById = new Map<number, List>(allLists.map((l) => [l.id, l]));
+	const inbox = await getOrCreateInbox();
+	const seeds = resolveChecklist(cl.items, listsById, inbox.id, opts.startDate ?? new Date());
 
 	if (seeds.length === 0) return [];
 
-	const inserted = await db.insert(tasks).values(seeds).returning();
-	return inserted;
+	return await db.insert(tasks).values(seeds).returning();
+}
+
+/**
+ * When a list is deleted, prune any checklist items that targeted it.
+ * Called from the list DELETE handler before the row is dropped.
+ */
+export async function pruneChecklistsForList(listId: number) {
+	const all = await db.select().from(checklists);
+	for (const c of all) {
+		const filtered = c.items.filter((i) => i.listId !== listId);
+		if (filtered.length !== c.items.length) {
+			await db.update(checklists).set({ items: filtered }).where(eq(checklists.id, c.id));
+		}
+	}
 }
