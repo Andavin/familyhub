@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseIcs } from './ics';
+import { parseIcs, expandEvents } from './ics';
 
 const SAMPLE = `BEGIN:VCALENDAR
 VERSION:2.0
@@ -115,5 +115,150 @@ DTSTART;TZID="America/Denver":20260509T040000
 END:VEVENT`;
 		const events = parseIcs(ics, 'Test', 'blue');
 		expect(events[0].start.toISOString()).toBe('2026-05-09T10:00:00.000Z');
+	});
+
+	it('captures RRULE and EXDATE on a recurring event', () => {
+		const ics = `BEGIN:VEVENT
+UID:weekly-1
+SUMMARY:Standup
+DTSTART:20260504T140000Z
+DTEND:20260504T143000Z
+RRULE:FREQ=WEEKLY;COUNT=10
+EXDATE:20260518T140000Z
+END:VEVENT`;
+		const events = parseIcs(ics, 'Work', 'blue');
+		expect(events).toHaveLength(1);
+		expect(events[0].rrule).toBe('FREQ=WEEKLY;COUNT=10');
+		expect(events[0].exdates).toEqual([
+			new Date('2026-05-18T14:00:00.000Z').getTime()
+		]);
+	});
+});
+
+describe('expandEvents', () => {
+	const baseRaw = {
+		uid: 'rec-1',
+		feedName: 'Work',
+		color: 'blue',
+		summary: 'Standup',
+		location: null,
+		description: null,
+		allDay: false
+	};
+
+	it('non-recurring events pass through unchanged (with rrule/exdates stripped)', () => {
+		const raw = [
+			{
+				...baseRaw,
+				rrule: null,
+				exdates: [],
+				start: new Date('2026-05-09T14:00:00Z'),
+				end: new Date('2026-05-09T14:30:00Z')
+			}
+		];
+		const out = expandEvents(raw, new Date('2026-05-01'), new Date('2026-06-01'));
+		expect(out).toHaveLength(1);
+		expect(out[0]).not.toHaveProperty('rrule');
+		expect(out[0].start.toISOString()).toBe('2026-05-09T14:00:00.000Z');
+	});
+
+	it('expands a weekly RRULE with COUNT inside the range', () => {
+		const raw = [
+			{
+				...baseRaw,
+				rrule: 'FREQ=WEEKLY;COUNT=4',
+				exdates: [],
+				start: new Date('2026-05-04T14:00:00Z'),
+				end: new Date('2026-05-04T14:30:00Z')
+			}
+		];
+		const out = expandEvents(raw, new Date('2026-05-01'), new Date('2026-06-01'));
+		expect(out).toHaveLength(4);
+		const isos = out.map((e) => e.start.toISOString());
+		expect(isos).toEqual([
+			'2026-05-04T14:00:00.000Z',
+			'2026-05-11T14:00:00.000Z',
+			'2026-05-18T14:00:00.000Z',
+			'2026-05-25T14:00:00.000Z'
+		]);
+		// Duration preserved
+		for (const e of out) {
+			expect(e.end.getTime() - e.start.getTime()).toBe(30 * 60_000);
+		}
+	});
+
+	it('honors EXDATE — excluded occurrence does not appear', () => {
+		const raw = [
+			{
+				...baseRaw,
+				rrule: 'FREQ=WEEKLY;COUNT=4',
+				exdates: [new Date('2026-05-18T14:00:00Z').getTime()],
+				start: new Date('2026-05-04T14:00:00Z'),
+				end: new Date('2026-05-04T14:30:00Z')
+			}
+		];
+		const out = expandEvents(raw, new Date('2026-05-01'), new Date('2026-06-01'));
+		const isos = out.map((e) => e.start.toISOString());
+		expect(isos).not.toContain('2026-05-18T14:00:00.000Z');
+		expect(out).toHaveLength(3);
+	});
+
+	it('clips occurrences to the visible range', () => {
+		const raw = [
+			{
+				...baseRaw,
+				rrule: 'FREQ=DAILY;COUNT=30',
+				exdates: [],
+				start: new Date('2026-05-01T09:00:00Z'),
+				end: new Date('2026-05-01T09:30:00Z')
+			}
+		];
+		const out = expandEvents(raw, new Date('2026-05-10'), new Date('2026-05-15'));
+		// 5 days from May 10 inclusive to May 15 exclusive: May 10, 11, 12, 13, 14
+		expect(out.map((e) => e.start.toISOString().slice(0, 10))).toEqual([
+			'2026-05-10',
+			'2026-05-11',
+			'2026-05-12',
+			'2026-05-13',
+			'2026-05-14'
+		]);
+	});
+
+	it('all-day annual event recurs once per year', () => {
+		const raw = [
+			{
+				...baseRaw,
+				summary: 'Anniversary',
+				rrule: 'FREQ=YEARLY',
+				exdates: [],
+				allDay: true,
+				start: new Date(Date.UTC(2018, 5, 1)),
+				end: new Date(Date.UTC(2018, 5, 2))
+			}
+		];
+		const out = expandEvents(
+			raw,
+			new Date(Date.UTC(2026, 4, 1)),
+			new Date(Date.UTC(2026, 5, 30))
+		);
+		expect(out).toHaveLength(1);
+		expect(out[0].start.toISOString().slice(0, 10)).toBe('2026-06-01');
+		expect(out[0].allDay).toBe(true);
+	});
+
+	it('falls back gracefully on garbage RRULE', () => {
+		const raw = [
+			{
+				...baseRaw,
+				rrule: 'NOT-A-VALID-RRULE',
+				exdates: [],
+				start: new Date('2026-05-09T14:00:00Z'),
+				end: new Date('2026-05-09T14:30:00Z')
+			}
+		];
+		const out = expandEvents(raw, new Date('2026-05-01'), new Date('2026-06-01'));
+		// Falls back to the master event itself
+		expect(out).toHaveLength(1);
+		expect(out[0].start.toISOString()).toBe('2026-05-09T14:00:00.000Z');
 	});
 });

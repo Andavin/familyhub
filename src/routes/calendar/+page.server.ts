@@ -2,7 +2,7 @@ import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import { tasks, users, lists, calendarFeeds } from '$lib/server/schema';
 import { and, asc, isNotNull, isNull } from 'drizzle-orm';
-import { fetchIcsFeed, type CalEvent } from '$lib/server/ics';
+import { fetchIcsFeed, expandEvents, type CalEvent } from '$lib/server/ics';
 import { futureOccurrences } from '$lib/server/recurrence';
 import { loadDoneEntries } from '$lib/server/done';
 
@@ -37,12 +37,14 @@ export const load: PageServerLoad = async ({ url }) => {
 		db.select().from(calendarFeeds).orderBy(asc(calendarFeeds.id))
 	]);
 
-	// Fetch every feed in parallel; bad feeds return [] without breaking the page.
+	// Fetch every feed in parallel, then expand recurring events into per-
+	// occurrence entries within the visible grid. Bad feeds return [] so a
+	// single broken URL never breaks the page.
 	const events: (CalEvent & { feedId: number; userId: number | null })[] = [];
 	const feedFetches = await Promise.all(
 		feeds.map((f) =>
-			fetchIcsFeed(f.url, f.name, f.color).then((evs) =>
-				evs
+			fetchIcsFeed(f.url, f.name, f.color).then((raw) =>
+				expandEvents(raw, gridStart, gridEnd)
 					.filter(
 						(e) => e.start.getTime() < gridEnd.getTime() && e.end.getTime() > gridStart.getTime()
 					)
