@@ -15,5 +15,5 @@ test('rejects wrong password', async ({ page }) => {
 
 test('accepts correct password and shows dashboard', async ({ page }) => {
 	await login(page);
-	await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+	await expect(page.getByTestId('board')).toBeVisible();
 });

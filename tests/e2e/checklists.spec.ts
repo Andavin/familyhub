@@ -24,7 +24,7 @@ test.describe('checklists', () => {
 	test('back arrow navigates to /', async ({ page }) => {
 		await page.getByTestId('back-to-tasks').click();
 		await expect(page).toHaveURL('http://localhost:4173/');
-		await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+		await expect(page.getByTestId('board')).toBeVisible();
 	});
 
 	test('Manage link inside Apply modal opens /checklists', async ({ page }) => {

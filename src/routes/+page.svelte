@@ -120,10 +120,9 @@
 
 <section class="px-4 sm:px-8 pb-3 flex items-center justify-between gap-3">
 	<div>
-		<h1 class="text-3xl sm:text-4xl font-display font-bold">Today</h1>
-		<p class="text-sm text-[color:var(--color-muted)]">
+		<h1 class="text-3xl sm:text-4xl font-display font-bold">
 			{new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
-		</p>
+		</h1>
 	</div>
 	<button
 		class="px-4 py-2 rounded-full bg-[color:var(--color-list-blue)] text-white text-sm font-semibold shadow"
