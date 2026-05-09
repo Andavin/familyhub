@@ -15,7 +15,10 @@ test.describe('people', () => {
 
 	test('add a new person and a personal list', async ({ page }) => {
 		await page.getByTestId('add-user').click();
-		await page.getByTestId('user-emoji-input').fill('👵');
+		// Open the picker, switch to the People tab, choose 👵
+		await page.getByTestId('emoji-trigger').click();
+		await page.getByRole('tab', { name: 'People' }).click();
+		await page.getByTestId('emoji-👵').click();
 		await page.getByTestId('user-name-input').fill('Grandma');
 		await page.getByTestId('user-save').click();
 

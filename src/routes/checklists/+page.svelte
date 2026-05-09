@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import EmojiPicker from '$lib/components/EmojiPicker.svelte';
 	import type { PageData } from './$types';
 	import type { Checklist, ChecklistItem } from '$lib/server/schema';
 
@@ -147,13 +148,8 @@
 		</header>
 
 		<div class="grid gap-2 mb-3">
-			<div class="flex gap-2">
-				<input
-					bind:value={emoji}
-					maxlength="2"
-					class="field w-16 text-center text-2xl"
-					aria-label="Emoji"
-				/>
+			<div class="flex gap-2 items-stretch">
+				<EmojiPicker value={emoji} onchange={(e) => (emoji = e)} />
 				<input
 					bind:value={name}
 					placeholder="Checklist name"

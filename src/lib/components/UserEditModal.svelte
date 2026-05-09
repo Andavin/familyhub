@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ColorPicker from './ColorPicker.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
+	import EmojiPicker from './EmojiPicker.svelte';
 	import type { User } from '$lib/server/schema';
 
 	type Props = {
@@ -80,14 +81,8 @@
 			<button class="text-xl text-[color:var(--color-muted)]" onclick={onclose} aria-label="Close">✕</button>
 		</header>
 
-		<div class="flex gap-2 mb-3">
-			<input
-				bind:value={emoji}
-				maxlength="2"
-				class="field w-16 text-center text-2xl"
-				aria-label="Emoji"
-				data-testid="user-emoji-input"
-			/>
+		<div class="flex gap-2 mb-3 items-stretch">
+			<EmojiPicker value={emoji} onchange={(e) => (emoji = e)} />
 			<input
 				bind:value={name}
 				placeholder="Name"
