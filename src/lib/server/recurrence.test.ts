@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildRrule, nextOccurrence, describeRrule, futureOccurrences } from './recurrence';
+import {
+	buildRrule,
+	nextOccurrence,
+	describeRrule,
+	futureOccurrences,
+	nextOccurrenceAfter
+} from './recurrence';
 
 describe('recurrence', () => {
 	it('returns null when no frequency', () => {
@@ -83,5 +89,31 @@ describe('futureOccurrences', () => {
 	it('returns empty for invalid rrule', () => {
 		const occ = futureOccurrences('garbage', new Date(), new Date(), new Date());
 		expect(occ).toEqual([]);
+	});
+});
+
+describe('nextOccurrenceAfter', () => {
+	it('weekly task overdue by 1 day → next is anchor + 7d (not now + 7d)', () => {
+		const r = buildRrule('weekly') as string;
+		const anchor = new Date('2026-05-08T09:00:00Z'); // Fri
+		const now = new Date('2026-05-09T12:00:00Z'); // Sat (1d after anchor)
+		const next = nextOccurrenceAfter(r, anchor, now);
+		expect(next).not.toBeNull();
+		// Following Friday at 9 UTC
+		expect((next as Date).toISOString()).toBe('2026-05-15T09:00:00.000Z');
+	});
+
+	it('daily task overdue by 3 days → next is tomorrow at the same time', () => {
+		const r = buildRrule('daily') as string;
+		const anchor = new Date('2026-05-06T09:00:00Z');
+		const now = new Date('2026-05-09T12:00:00Z');
+		const next = nextOccurrenceAfter(r, anchor, now);
+		expect(next).not.toBeNull();
+		// Next on-grid instance strictly after now (9 May 12:00) is 10 May 09:00
+		expect((next as Date).toISOString()).toBe('2026-05-10T09:00:00.000Z');
+	});
+
+	it('returns null for invalid rrule', () => {
+		expect(nextOccurrenceAfter('garbage', new Date(), new Date())).toBeNull();
 	});
 });

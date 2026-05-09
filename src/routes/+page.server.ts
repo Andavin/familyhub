@@ -5,7 +5,7 @@ import { asc, isNull, eq } from 'drizzle-orm';
 import { getOrCreateInbox } from '$lib/server/inbox';
 import { loadDoneEntries } from '$lib/server/done';
 import { isOverdue } from '$lib/format';
-import { nextOccurrence } from '$lib/server/recurrence';
+import { nextOccurrenceAfter } from '$lib/server/recurrence';
 
 export const load: PageServerLoad = async () => {
 	await getOrCreateInbox();
@@ -32,11 +32,15 @@ export const load: PageServerLoad = async () => {
 	// For overdue recurring tasks, project the next-after-now occurrence so
 	// the upcoming instance still shows in Scheduled. The actual stored row
 	// stays in Today with its overdue flag — this is purely a visual preview.
+	// We anchor the rrule at the task's original dueAt so the next instance
+	// follows the task's natural schedule (e.g. weekly task originally due
+	// last Monday → next is this Monday, not "now + 7d").
+	const now = new Date();
 	const projectedRecurring: Task[] = [];
 	for (const t of openTasks) {
 		if (!t.rrule || !t.dueAt) continue;
 		if (!isOverdue(new Date(t.dueAt), t.dueHasTime)) continue;
-		const next = nextOccurrence(t.rrule, new Date());
+		const next = nextOccurrenceAfter(t.rrule, new Date(t.dueAt), now);
 		if (!next) continue;
 		projectedRecurring.push({ ...t, dueAt: next });
 	}

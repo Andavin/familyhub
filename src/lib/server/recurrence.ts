@@ -51,6 +51,31 @@ export function describeRrule(rrule: string): string {
 }
 
 /**
+ * Find the next occurrence of an rrule strictly after `after`, anchored at
+ * the task's natural schedule (`dtstart` = the task's original dueAt).
+ *
+ * Use this when the question is "what's the next future instance per the
+ * task's repeat pattern?" — e.g. previewing the next slot of an overdue
+ * recurring task. Distinct from `nextOccurrence`, which advances by exactly
+ * one cycle from a given point (used when completing).
+ */
+export function nextOccurrenceAfter(
+	rrule: string,
+	anchor: Date,
+	after: Date
+): Date | null {
+	let parsed: ReturnType<typeof RRule.fromString>;
+	try {
+		parsed = RRule.fromString(rrule);
+	} catch {
+		return null;
+	}
+	const opts: Partial<Options> = { ...parsed.origOptions, dtstart: anchor };
+	const rule = new RRule(opts);
+	return rule.after(after, false) ?? null;
+}
+
+/**
  * Project a recurring task's future instances into [rangeStart, rangeEnd].
  * Anchored at `dtstart` (the task's current dueAt). Returns occurrence dates
  * strictly after `dtstart` — used to render greyed-out "ghost" reminder pills
