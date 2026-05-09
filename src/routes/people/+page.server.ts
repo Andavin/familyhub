@@ -1,9 +1,12 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { users } from '$lib/server/schema';
+import { users, calendarFeeds } from '$lib/server/schema';
 import { asc } from 'drizzle-orm';
 
 export const load: PageServerLoad = async () => {
-	const rows = await db.select().from(users).orderBy(asc(users.displayOrder));
-	return { users: rows };
+	const [u, f] = await Promise.all([
+		db.select().from(users).orderBy(asc(users.displayOrder)),
+		db.select().from(calendarFeeds).orderBy(asc(calendarFeeds.id))
+	]);
+	return { users: u, feeds: f };
 };

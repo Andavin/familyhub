@@ -3,7 +3,7 @@
 	import UserEditModal from '$lib/components/UserEditModal.svelte';
 	import { colorVar } from '$lib/colors';
 	import type { PageData } from './$types';
-	import type { User } from '$lib/server/schema';
+	import type { User, CalendarFeed } from '$lib/server/schema';
 
 	let { data }: { data: PageData } = $props();
 
@@ -62,6 +62,7 @@
 <UserEditModal
 	open={modalOpen}
 	user={editing}
+	feeds={editing ? data.feeds.filter((f: CalendarFeed) => f.userId === editing!.id) : []}
 	onclose={() => (modalOpen = false)}
 	onsaved={async () => {
 		await invalidateAll();

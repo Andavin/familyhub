@@ -134,6 +134,30 @@ export const groceryItems = sqliteTable(
 	})
 );
 
+/**
+ * Public iCal subscription URL bound to a user (or null for shared / nobody).
+ * Pulled read-only on each Calendar page load. The URL is the credential —
+ * keep it secret, regenerate by toggling Public off/on in the source app.
+ */
+export const calendarFeeds = sqliteTable(
+	'calendar_feeds',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
+		name: text('name').notNull(),
+		url: text('url').notNull(),
+		color: text('color').notNull().default('blue'),
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`)
+	},
+	(t) => ({
+		userIdx: index('calendar_feeds_user_idx').on(t.userId)
+	})
+);
+
+export type CalendarFeed = typeof calendarFeeds.$inferSelect;
+
 export const sessions = sqliteTable(
 	'sessions',
 	{

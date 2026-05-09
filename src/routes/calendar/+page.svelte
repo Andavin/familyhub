@@ -8,6 +8,48 @@
 
 	let { data }: { data: PageData } = $props();
 
+	// Per-person filter — null is the "unassigned / shared" bucket. Persist in
+	// localStorage so the kiosk remembers which chips you toggled.
+	const FILTER_KEY = 'fh_cal_filter';
+	type PersonId = number | 'shared';
+	const allChipIds = $derived<PersonId[]>([
+		...data.users.map((u) => u.id as PersonId),
+		'shared'
+	]);
+
+	let activeIds = $state<Set<PersonId>>(new Set());
+
+	$effect(() => {
+		// Initialise from storage on mount; default to everyone.
+		if (typeof window === 'undefined') return;
+		try {
+			const raw = window.localStorage.getItem(FILTER_KEY);
+			if (raw) {
+				const parsed = JSON.parse(raw) as (number | 'shared')[];
+				activeIds = new Set(parsed);
+				return;
+			}
+		} catch {
+			// ignore
+		}
+		activeIds = new Set(allChipIds);
+	});
+
+	function toggleChip(id: PersonId) {
+		const next = new Set(activeIds);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		activeIds = next;
+		if (typeof window !== 'undefined') {
+			window.localStorage.setItem(FILTER_KEY, JSON.stringify([...next]));
+		}
+	}
+
+	function isPersonVisible(uid: number | null): boolean {
+		const id: PersonId = uid ?? 'shared';
+		return activeIds.has(id);
+	}
+
 	const monthName = $derived(
 		new Date(data.month.year, data.month.month, 1).toLocaleString([], {
 			month: 'long',
@@ -52,6 +94,7 @@
 	function pillsForDay(d: Date): Pill[] {
 		const pills: Pill[] = [];
 		for (const e of data.events) {
+			if (!isPersonVisible(e.userId)) continue;
 			const start = new Date(e.start);
 			if (sameDay(start, d)) {
 				pills.push({
@@ -65,6 +108,7 @@
 		}
 		for (const t of data.tasks) {
 			if (!t.dueAt) continue;
+			if (!isPersonVisible(t.assigneeId)) continue;
 			const due = new Date(t.dueAt);
 			if (sameDay(due, d)) {
 				pills.push({
@@ -79,6 +123,10 @@
 		}
 		for (const g of data.ghosts) {
 			const at = new Date(g.at);
+			// Ghosts come from tasks; filter by the underlying assignee. We
+			// don't have it directly on the ghost record, so look it up.
+			const t = data.tasks.find((x) => x.id === g.taskId);
+			if (t && !isPersonVisible(t.assigneeId)) continue;
 			if (sameDay(at, d)) {
 				pills.push({
 					key: 'g' + g.taskId + g.at,
@@ -94,7 +142,10 @@
 
 	function completedForDay(d: Date): DoneEntry[] {
 		return data.doneEntries.filter(
-			(e) => e.task.completedAt && sameDay(new Date(e.task.completedAt), d)
+			(e) =>
+				e.task.completedAt &&
+				sameDay(new Date(e.task.completedAt), d) &&
+				isPersonVisible(e.task.assigneeId)
 		);
 	}
 
@@ -131,14 +182,40 @@
 	}
 </script>
 
-<section class="px-4 sm:px-8 pb-3 flex items-center justify-between">
+<section class="px-4 sm:px-8 pb-3 flex items-center justify-between gap-3 flex-wrap">
 	<div>
 		<h1 class="text-3xl sm:text-4xl font-display font-bold">{monthName}</h1>
-		<p class="text-sm text-[color:var(--color-muted)]">
-			Family calendar &amp; reminders
-		</p>
 	</div>
-	<div class="flex gap-1">
+	<div class="flex gap-2 items-center flex-wrap">
+		<div class="chips" data-testid="filter-chips">
+			{#each data.users as u (u.id)}
+				<button
+					type="button"
+					class="chip"
+					class:active={activeIds.has(u.id)}
+					style="--c: {colorVar(u.color)}"
+					onclick={() => toggleChip(u.id)}
+					aria-pressed={activeIds.has(u.id)}
+					data-testid="chip-{u.id}"
+				>
+					<span class="chip-dot"></span>
+					<span class="chip-emoji">{u.emoji}</span>
+					<span>{u.name}</span>
+				</button>
+			{/each}
+			<button
+				type="button"
+				class="chip"
+				class:active={activeIds.has('shared')}
+				style="--c: var(--color-muted)"
+				onclick={() => toggleChip('shared')}
+				aria-pressed={activeIds.has('shared')}
+				data-testid="chip-shared"
+			>
+				<span class="chip-dot"></span>
+				<span>Shared</span>
+			</button>
+		</div>
 		<button class="nav-btn" aria-label="Previous month" onclick={() => jump(-1)}>‹</button>
 		<button class="nav-btn" aria-label="Today" onclick={() => goto('/calendar')}>Today</button>
 		<button class="nav-btn" aria-label="Next month" onclick={() => jump(1)}>›</button>
@@ -292,6 +369,39 @@
 		background: white;
 		font-size: 0.9rem;
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+	}
+	.chips {
+		display: flex;
+		gap: 0.4rem;
+		flex-wrap: wrap;
+	}
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		padding: 0.3rem 0.75rem;
+		border-radius: 9999px;
+		background: white;
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: var(--color-muted);
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		opacity: 0.55;
+		transition: opacity 120ms ease, background 120ms ease;
+	}
+	.chip.active {
+		opacity: 1;
+		color: var(--color-ink);
+	}
+	.chip-dot {
+		width: 9px;
+		height: 9px;
+		border-radius: 9999px;
+		background: var(--c);
+	}
+	.chip-emoji {
+		font-size: 0.95rem;
+		line-height: 1;
 	}
 	.cal {
 		background: white;

@@ -1,8 +1,8 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { tasks, users, lists } from '$lib/server/schema';
+import { tasks, users, lists, calendarFeeds } from '$lib/server/schema';
 import { and, asc, isNotNull, isNull } from 'drizzle-orm';
-import { fetchEvents } from '$lib/server/caldav';
+import { fetchIcsFeed, type CalEvent } from '$lib/server/ics';
 import { futureOccurrences } from '$lib/server/recurrence';
 import { loadDoneEntries } from '$lib/server/done';
 
@@ -20,30 +20,38 @@ export const load: PageServerLoad = async ({ url }) => {
 	const start = new Date(ref.getFullYear(), ref.getMonth(), 1);
 	const end = new Date(ref.getFullYear(), ref.getMonth() + 1, 1);
 
-	// pad to start on Sunday
 	const gridStart = new Date(start);
 	gridStart.setDate(start.getDate() - start.getDay());
 	const gridEnd = new Date(end);
 	gridEnd.setDate(end.getDate() + (6 - end.getDay()));
 
-	const [u, l, activeDueTasks, doneEntries, events] = await Promise.all([
+	const [u, l, activeDueTasks, doneEntries, feeds] = await Promise.all([
 		db.select().from(users).orderBy(asc(users.displayOrder)),
 		db.select().from(lists),
-		// Active reminders only — completed/logged ones live in the Completed section.
 		db
 			.select()
 			.from(tasks)
 			.where(and(isNotNull(tasks.dueAt), isNull(tasks.completedAt)))
 			.orderBy(asc(tasks.dueAt)),
-		// Unified done log within the visible grid (non-recurring completedAt
-		// rows + recurring completion records).
 		loadDoneEntries(gridStart),
-		fetchEvents(gridStart, gridEnd)
+		db.select().from(calendarFeeds).orderBy(asc(calendarFeeds.id))
 	]);
 
-	// Project future occurrences from active recurring tasks. Because recurring
-	// tasks now advance dueAt in place (no spawned twin row), there's no risk
-	// of double-projection.
+	// Fetch every feed in parallel; bad feeds return [] without breaking the page.
+	const events: (CalEvent & { feedId: number; userId: number | null })[] = [];
+	const feedFetches = await Promise.all(
+		feeds.map((f) =>
+			fetchIcsFeed(f.url, f.name, f.color).then((evs) =>
+				evs
+					.filter(
+						(e) => e.start.getTime() < gridEnd.getTime() && e.end.getTime() > gridStart.getTime()
+					)
+					.map((e) => ({ ...e, feedId: f.id, userId: f.userId }))
+			)
+		)
+	);
+	for (const arr of feedFetches) events.push(...arr);
+
 	const ghosts: GhostOccurrence[] = [];
 	const usersById = new Map(u.map((x) => [x.id, x]));
 	for (const t of activeDueTasks) {
@@ -67,6 +75,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		doneEntries,
 		ghosts,
 		events,
+		feeds,
 		month: { year: ref.getFullYear(), month: ref.getMonth() }
 	};
 };
