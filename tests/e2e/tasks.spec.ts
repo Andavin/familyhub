@@ -131,6 +131,73 @@ test.describe('tasks', () => {
 		await expect(firstCol.getByText('Today thing')).toHaveCount(2);
 	});
 
+	test('complete + uncomplete on a recurring task does not accumulate spawns', async ({
+		page
+	}) => {
+		const firstCol = page.getByTestId(/^column-/).first();
+		const colTestId = await firstCol.getAttribute('data-testid');
+		const listId = colTestId!.split('-')[1];
+
+		// Create a recurring weekly task due today
+		const today = new Date();
+		today.setHours(9, 0, 0, 0);
+		await page.evaluate(
+			async ([lid, iso]) => {
+				await fetch('/api/tasks', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						listId: Number(lid),
+						title: 'Weekly chore',
+						dueAt: iso,
+						rrule: 'FREQ=WEEKLY'
+					})
+				});
+			},
+			[listId, today.toISOString()]
+		);
+
+		await page.reload();
+		await page.waitForLoadState('networkidle');
+
+		// Today-due tasks also appear in Scheduled (per current model), so
+		// initial count in the column is 2 with all sections collapsed.
+		const allRows = firstCol.locator('[data-testid="task-row"]', {
+			hasText: 'Weekly chore'
+		});
+		await expect(allRows).toHaveCount(1); // sections collapsed → only Today area shows it
+
+		// Complete it. Recurring complete advances dueAt to next week.
+		const row = allRows.first();
+		await row.getByRole('button', { name: /Mark .* complete/i }).click();
+
+		// Today section no longer shows it (task moved to next week).
+		await expect(allRows).toHaveCount(0, { timeout: 5000 });
+
+		// Scheduled section now contains the same task with the advanced dueAt.
+		await firstCol.getByTestId(`toggle-scheduled-${listId}`).click();
+		await expect(allRows).toHaveCount(1);
+
+		// Completed section has the completion log entry.
+		await firstCol.getByTestId(`toggle-completed-${listId}`).click();
+		// Tap the "incomplete" checkbox in the Completed entry to rewind.
+		await firstCol
+			.getByRole('button', { name: /Mark "Weekly chore" incomplete/i })
+			.click();
+
+		// After uncomplete: dueAt rewound to today. The task appears in Today
+		// AND in the still-expanded Scheduled section (date-bound). Completed
+		// section vanishes (no completion log). Total = 2 rows.
+		await expect(allRows).toHaveCount(2, { timeout: 5000 });
+
+		// And critically, *only one* underlying task exists — verify by API.
+		const apiCount = await page.evaluate(async () => {
+			const rows = await fetch('/api/tasks').then((r) => r.json());
+			return (rows as { title: string }[]).filter((r) => r.title === 'Weekly chore').length;
+		});
+		expect(apiCount).toBe(1);
+	});
+
 	test('delete from detail modal asks for confirmation', async ({ page }) => {
 		const firstCol = page.getByTestId(/^column-/).first();
 		const input = firstCol.getByTestId('add-task-input');

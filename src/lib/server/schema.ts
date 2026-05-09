@@ -47,6 +47,10 @@ export const tasks = sqliteTable(
 		rrule: text('rrule'),
 		flagged: integer('flagged', { mode: 'boolean' }).notNull().default(false),
 		priority: integer('priority').notNull().default(0),
+		// Set when a non-recurring task is checked off, OR when a recurring
+		// series has run out of occurrences and ends. Recurring tasks with
+		// remaining occurrences keep this null and instead advance dueAt
+		// while logging to task_completions.
 		completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
 		completedBy: integer('completed_by').references(() => users.id, { onDelete: 'set null' }),
 		sortOrder: integer('sort_order').notNull().default(0),
@@ -64,6 +68,31 @@ export const tasks = sqliteTable(
 		completedIdx: index('tasks_completed_idx').on(t.completedAt)
 	})
 );
+
+/**
+ * Completion log for recurring tasks. Each time a recurring task is
+ * checked off, we append a row here recording when it was completed and
+ * what the dueAt was at that moment — that lets us rewind on uncomplete
+ * without needing to reverse-compute the rrule.
+ */
+export const taskCompletions = sqliteTable(
+	'task_completions',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		taskId: integer('task_id')
+			.notNull()
+			.references(() => tasks.id, { onDelete: 'cascade' }),
+		completedAt: integer('completed_at', { mode: 'timestamp_ms' }).notNull(),
+		completedBy: integer('completed_by').references(() => users.id, { onDelete: 'set null' }),
+		dueAtAtCompletion: integer('due_at_at_completion', { mode: 'timestamp_ms' })
+	},
+	(t) => ({
+		taskIdx: index('task_completions_task_idx').on(t.taskId),
+		completedIdx: index('task_completions_completed_idx').on(t.completedAt)
+	})
+);
+
+export type TaskCompletion = typeof taskCompletions.$inferSelect;
 
 export type ChecklistItem = {
 	title: string;

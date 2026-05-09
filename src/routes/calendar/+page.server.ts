@@ -1,9 +1,10 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import { tasks, users, lists } from '$lib/server/schema';
-import { and, asc, desc, gte, isNotNull, isNull, lt } from 'drizzle-orm';
+import { and, asc, isNotNull, isNull } from 'drizzle-orm';
 import { fetchEvents } from '$lib/server/caldav';
 import { futureOccurrences } from '$lib/server/recurrence';
+import { loadDoneEntries } from '$lib/server/done';
 
 export type GhostOccurrence = {
 	taskId: number;
@@ -25,34 +26,24 @@ export const load: PageServerLoad = async ({ url }) => {
 	const gridEnd = new Date(end);
 	gridEnd.setDate(end.getDate() + (6 - end.getDay()));
 
-	const [u, l, activeDueTasks, completedTasks, events] = await Promise.all([
+	const [u, l, activeDueTasks, doneEntries, events] = await Promise.all([
 		db.select().from(users).orderBy(asc(users.displayOrder)),
 		db.select().from(lists),
-		// Active reminders only — completed ones live in the Completed section.
+		// Active reminders only — completed/logged ones live in the Completed section.
 		db
 			.select()
 			.from(tasks)
 			.where(and(isNotNull(tasks.dueAt), isNull(tasks.completedAt)))
 			.orderBy(asc(tasks.dueAt)),
-		// Tasks completed within the visible grid (so historical day-detail can list them).
-		db
-			.select()
-			.from(tasks)
-			.where(
-				and(
-					isNotNull(tasks.completedAt),
-					gte(tasks.completedAt, gridStart),
-					lt(tasks.completedAt, gridEnd)
-				)
-			)
-			.orderBy(desc(tasks.completedAt)),
+		// Unified done log within the visible grid (non-recurring completedAt
+		// rows + recurring completion records).
+		loadDoneEntries(gridStart),
 		fetchEvents(gridStart, gridEnd)
 	]);
 
-	// Project future occurrences ONLY from active recurring tasks. If a recurring
-	// task has been completed, its already-spawned next instance is in
-	// activeDueTasks and projects from there — projecting from the completed
-	// row too would double up the ghosts on every future date.
+	// Project future occurrences from active recurring tasks. Because recurring
+	// tasks now advance dueAt in place (no spawned twin row), there's no risk
+	// of double-projection.
 	const ghosts: GhostOccurrence[] = [];
 	const usersById = new Map(u.map((x) => [x.id, x]));
 	for (const t of activeDueTasks) {
@@ -73,7 +64,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		users: u,
 		lists: l,
 		tasks: activeDueTasks,
-		completedTasks,
+		doneEntries,
 		ghosts,
 		events,
 		month: { year: ref.getFullYear(), month: ref.getMonth() }

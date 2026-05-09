@@ -8,6 +8,7 @@
 	import { colorVar } from '$lib/colors';
 	import type { PageData } from './$types';
 	import type { Task, List } from '$lib/server/schema';
+	import type { DoneEntry } from '$lib/server/done';
 
 	let { data }: { data: PageData } = $props();
 
@@ -15,7 +16,7 @@
 		list: List;
 		today: Task[];
 		scheduled: Task[];
-		done: Task[];
+		done: DoneEntry[];
 	};
 
 	function endOfToday(): number {
@@ -45,7 +46,7 @@
 				list,
 				today,
 				scheduled,
-				done: data.doneTasks.filter((t) => t.listId === list.id)
+				done: data.doneEntries.filter((e) => e.task.listId === list.id)
 			};
 		});
 	});
@@ -204,9 +205,9 @@
 						</button>
 						{#if isDoneOpen}
 							<div class="completed-list">
-								{#each done as task (task.id)}
+								{#each done as entry (entry.uid)}
 									<TaskRow
-										{task}
+										task={entry.task}
 										color={col.list.color}
 										onComplete={complete}
 										onopen={openTask}

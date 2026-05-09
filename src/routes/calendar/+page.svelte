@@ -4,6 +4,7 @@
 	import { colorVar } from '$lib/colors';
 	import type { PageData } from './$types';
 	import type { Task } from '$lib/server/schema';
+	import type { DoneEntry } from '$lib/server/done';
 
 	let { data }: { data: PageData } = $props();
 
@@ -91,9 +92,9 @@
 		return pills.sort((a, b) => a.time - b.time);
 	}
 
-	function completedForDay(d: Date): Task[] {
-		return data.completedTasks.filter(
-			(t) => t.completedAt && sameDay(new Date(t.completedAt), d)
+	function completedForDay(d: Date): DoneEntry[] {
+		return data.doneEntries.filter(
+			(e) => e.task.completedAt && sameDay(new Date(e.task.completedAt), d)
 		);
 	}
 
@@ -251,7 +252,8 @@
 				</button>
 				{#if completedExpanded}
 					<div class="completed-list">
-						{#each dayDone as t (t.id)}
+						{#each dayDone as entry (entry.uid)}
+							{@const t = entry.task}
 							<div
 								class="day-row"
 								style="--pc: {colorOrLiteral(userColor(t.assigneeId))}"
