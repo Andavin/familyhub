@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
+	import Checkbox from '$lib/components/Checkbox.svelte';
 	import { colorVar } from '$lib/colors';
 	import type { PageData } from './$types';
-	import type { Task, User } from '$lib/server/schema';
+	import type { Task } from '$lib/server/schema';
 
 	let { data }: { data: PageData } = $props();
 
@@ -39,6 +40,7 @@
 		color: string;
 		kind: 'event' | 'reminder' | 'ghost';
 		time: number;
+		task?: Task;
 	};
 
 	function userColor(uid: number | null): string {
@@ -69,7 +71,8 @@
 					label: t.title,
 					color: userColor(t.assigneeId),
 					kind: 'reminder',
-					time: due.getTime()
+					time: due.getTime(),
+					task: t
 				});
 			}
 		}
@@ -86,6 +89,12 @@
 			}
 		}
 		return pills.sort((a, b) => a.time - b.time);
+	}
+
+	function completedForDay(d: Date): Task[] {
+		return data.completedTasks.filter(
+			(t) => t.completedAt && sameDay(new Date(t.completedAt), d)
+		);
 	}
 
 	function colorOrLiteral(c: string): string {
@@ -107,6 +116,18 @@
 		selected = new Date(data.month.year, data.month.month, today.getDate());
 	});
 	const dayPills = $derived(selected ? pillsForDay(selected) : []);
+	const dayDone = $derived(selected ? completedForDay(selected) : []);
+
+	let completedExpanded = $state(false);
+
+	async function toggleComplete(t: Task) {
+		await fetch(`/api/tasks/${t.id}/complete`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: '{}'
+		});
+		await invalidateAll();
+	}
 </script>
 
 <section class="px-4 sm:px-8 pb-3 flex items-center justify-between">
@@ -169,9 +190,7 @@
 	<aside class="day-detail">
 		<header>
 			<div class="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
-				{selected
-					? selected.toLocaleDateString([], { weekday: 'long' })
-					: ''}
+				{selected ? selected.toLocaleDateString([], { weekday: 'long' }) : ''}
 			</div>
 			<div class="text-3xl font-display font-bold">
 				{selected ? selected.getDate() : ''}
@@ -180,13 +199,25 @@
 				</span>
 			</div>
 		</header>
-		<div class="day-list">
+		<div class="day-list" data-testid="day-list">
 			{#each dayPills as p (p.key)}
-				<div class="day-row" class:ghost={p.kind === 'ghost'} style="--pc: {colorOrLiteral(p.color)}">
-					{#if p.kind === 'reminder' || p.kind === 'ghost'}
-						<span class="rdot big"></span>
+				<div
+					class="day-row"
+					class:ghost={p.kind === 'ghost'}
+					style="--pc: {colorOrLiteral(p.color)}"
+				>
+					{#if p.kind === 'reminder' && p.task}
+						<Checkbox
+							checked={false}
+							color={p.color}
+							size={20}
+							label={`Mark "${p.task.title}" complete`}
+							onchange={() => p.task && toggleComplete(p.task)}
+						/>
+					{:else if p.kind === 'ghost'}
+						<span class="rdot big" aria-hidden="true"></span>
 					{:else}
-						<span class="ebar"></span>
+						<span class="ebar" aria-hidden="true"></span>
 					{/if}
 					<div class="flex-1 min-w-0">
 						<div class="font-medium truncate">{p.label}</div>
@@ -200,9 +231,54 @@
 					</div>
 				</div>
 			{:else}
-				<p class="text-[color:var(--color-muted)] text-sm">Nothing scheduled.</p>
+				{#if dayDone.length === 0}
+					<p class="text-[color:var(--color-muted)] text-sm">Nothing scheduled.</p>
+				{/if}
 			{/each}
 		</div>
+
+		{#if dayDone.length > 0}
+			<div class="completed-block">
+				<button
+					class="completed-toggle"
+					aria-expanded={completedExpanded}
+					onclick={() => (completedExpanded = !completedExpanded)}
+					data-testid="cal-toggle-completed"
+				>
+					<span class="chev" class:open={completedExpanded}>›</span>
+					<span>Completed</span>
+					<span class="completed-count">{dayDone.length}</span>
+				</button>
+				{#if completedExpanded}
+					<div class="completed-list">
+						{#each dayDone as t (t.id)}
+							<div
+								class="day-row"
+								style="--pc: {colorOrLiteral(userColor(t.assigneeId))}"
+							>
+								<Checkbox
+									checked
+									color={userColor(t.assigneeId)}
+									size={20}
+									label={`Mark "${t.title}" incomplete`}
+									onchange={() => toggleComplete(t)}
+								/>
+								<div class="flex-1 min-w-0">
+									<div class="font-medium truncate done-title">{t.title}</div>
+									<div class="text-xs text-[color:var(--color-muted)]">
+										Completed ·
+										{new Date(t.completedAt as Date).toLocaleTimeString([], {
+											hour: 'numeric',
+											minute: '2-digit'
+										})}
+									</div>
+								</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
 	</aside>
 </div>
 
@@ -351,5 +427,44 @@
 		display: flex;
 		align-items: center;
 		gap: 0.7rem;
+	}
+	.completed-block {
+		margin-top: 1rem;
+		padding-top: 0.75rem;
+		border-top: 1px solid var(--color-divider);
+	}
+	.completed-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.78rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--color-muted);
+		padding: 0.35rem 0;
+		width: 100%;
+	}
+	.chev {
+		display: inline-block;
+		transition: transform 160ms ease;
+		font-weight: 700;
+	}
+	.chev.open {
+		transform: rotate(90deg);
+	}
+	.completed-count {
+		margin-left: auto;
+		color: var(--color-muted);
+	}
+	.completed-list {
+		margin-top: 0.5rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.85rem;
+	}
+	.completed-list .done-title {
+		text-decoration: line-through;
+		color: var(--color-muted);
 	}
 </style>

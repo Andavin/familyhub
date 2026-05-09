@@ -43,4 +43,32 @@ test.describe('calendar', () => {
 		await page.getByRole('button', { name: 'Today' }).click();
 		await expect(page).toHaveURL('/calendar');
 	});
+
+	test('completing from day-detail moves task to Completed section', async ({ page }) => {
+		const today = new Date();
+		today.setHours(15, 0, 0, 0);
+		await page.evaluate(async (iso) => {
+			const lists = await fetch('/api/lists').then((r) => r.json());
+			await fetch('/api/tasks', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					listId: lists[0].id,
+					title: 'Calendar complete test',
+					dueAt: iso
+				})
+			});
+		}, today.toISOString());
+
+		await page.goto('/calendar');
+		const dayList = page.getByTestId('day-list');
+		await expect(dayList.getByText('Calendar complete test')).toBeVisible();
+
+		const row = dayList.locator('div.day-row', { hasText: 'Calendar complete test' });
+		await row.getByRole('button', { name: /Mark .* complete/i }).click();
+		await expect(dayList.getByText('Calendar complete test')).toHaveCount(0, { timeout: 5000 });
+
+		await page.getByTestId('cal-toggle-completed').click();
+		await expect(page.getByText('Calendar complete test')).toBeVisible();
+	});
 });
