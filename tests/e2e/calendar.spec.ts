@@ -64,7 +64,7 @@ test.describe('calendar', () => {
 		const dayList = page.getByTestId('day-list');
 		await expect(dayList.getByText('Calendar complete test')).toBeVisible();
 
-		const row = dayList.locator('div.day-row', { hasText: 'Calendar complete test' });
+		const row = dayList.locator('div.task-line', { hasText: 'Calendar complete test' });
 		await row.getByRole('button', { name: /Mark .* complete/i }).click();
 		await expect(dayList.getByText('Calendar complete test')).toHaveCount(0, { timeout: 5000 });
 

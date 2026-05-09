@@ -4,6 +4,7 @@
 	import EventDetailModal, {
 		type EventDetail
 	} from '$lib/components/EventDetailModal.svelte';
+	import TaskDetailModal from '$lib/components/TaskDetailModal.svelte';
 	import { colorVar } from '$lib/colors';
 	import type { PageData } from './$types';
 	import type { Task } from '$lib/server/schema';
@@ -214,10 +215,17 @@
 	let completedExpanded = $state(false);
 	let eventModalOpen = $state(false);
 	let eventBeingShown = $state<EventDetail | null>(null);
+	let taskModalOpen = $state(false);
+	let taskBeingEdited = $state<Task | null>(null);
 
 	function openEvent(ev: EventDetail) {
 		eventBeingShown = ev;
 		eventModalOpen = true;
+	}
+
+	function openTaskDetail(t: Task) {
+		taskBeingEdited = t;
+		taskModalOpen = true;
 	}
 
 	async function setComplete(t: Task, done: boolean) {
@@ -326,64 +334,36 @@
 			</div>
 		</header>
 		{#snippet pillRow(p: Pill)}
-			{@const meta =
-				p.kind === 'event' && p.allDay
-					? 'All day'
-					: p.kind === 'event' && p.endTime && p.endTime !== p.time
-						? new Date(p.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) +
-							' – ' +
-							new Date(p.endTime).toLocaleTimeString([], {
-								hour: 'numeric',
-								minute: '2-digit'
-							})
-						: p.hasTime
-							? new Date(p.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-							: ''}
-			{@const kindLabel =
-				p.kind === 'event' ? 'Event' : p.kind === 'ghost' ? 'Repeats' : 'Reminder'}
 			{#if p.kind === 'event' && p.event}
 				<button
 					type="button"
-					class="day-row clickable"
+					class="event-block"
 					style="--pc: {colorOrLiteral(p.color)}"
 					onclick={() => openEvent(p.event!)}
 				>
-					<span class="ebar" aria-hidden="true"></span>
-					<div class="flex-1 min-w-0 text-left">
-						<div class="font-medium truncate">{p.label}</div>
-						<div class="text-xs text-[color:var(--color-muted)]">
-							{kindLabel}{meta ? ' · ' + meta : ''}
-						</div>
-						{#if p.location}
-							<div class="text-xs text-[color:var(--color-muted)] truncate">
-								📍 {p.location}
-							</div>
-						{/if}
-					</div>
+					<span class="event-title">{p.label}</span>
 				</button>
+			{:else if p.kind === 'reminder' && p.task}
+				<div class="task-line" style="--pc: {colorOrLiteral(p.color)}">
+					<Checkbox
+						checked={false}
+						color={p.color}
+						size={18}
+						label={`Mark "${p.task.title}" complete`}
+						onchange={(next) => p.task && setComplete(p.task, next)}
+					/>
+					<button
+						type="button"
+						class="task-title-btn"
+						onclick={() => p.task && openTaskDetail(p.task)}
+					>
+						{p.label}
+					</button>
+				</div>
 			{:else}
-				<div
-					class="day-row"
-					class:ghost={p.kind === 'ghost'}
-					style="--pc: {colorOrLiteral(p.color)}"
-				>
-					{#if p.kind === 'reminder' && p.task}
-						<Checkbox
-							checked={false}
-							color={p.color}
-							size={20}
-							label={`Mark "${p.task.title}" complete`}
-							onchange={(next) => p.task && setComplete(p.task, next)}
-						/>
-					{:else}
-						<span class="rdot big" aria-hidden="true"></span>
-					{/if}
-					<div class="flex-1 min-w-0">
-						<div class="font-medium truncate">{p.label}</div>
-						<div class="text-xs text-[color:var(--color-muted)]">
-							{kindLabel}{meta ? ' · ' + meta : ''}
-						</div>
-					</div>
+				<div class="ghost-line" style="--pc: {colorOrLiteral(p.color)}">
+					<span class="rdot small" aria-hidden="true"></span>
+					<span class="ghost-title">{p.label}</span>
 				</div>
 			{/if}
 		{/snippet}
@@ -469,6 +449,17 @@
 	open={eventModalOpen}
 	event={eventBeingShown}
 	onclose={() => (eventModalOpen = false)}
+/>
+
+<TaskDetailModal
+	open={taskModalOpen}
+	task={taskBeingEdited}
+	users={data.users}
+	lists={data.lists}
+	onclose={() => (taskModalOpen = false)}
+	onsaved={async () => {
+		await invalidateAll();
+	}}
 />
 
 <style>
@@ -601,26 +592,12 @@
 	.pill.ghost {
 		opacity: 0.45;
 	}
-	.day-row.ghost {
-		opacity: 0.5;
-	}
 	.rdot {
 		width: 7px;
 		height: 7px;
 		border-radius: 9999px;
 		border: 1.4px solid var(--pc);
 		flex-shrink: 0;
-	}
-	.rdot.big {
-		width: 10px;
-		height: 10px;
-		border-width: 2px;
-	}
-	.ebar {
-		width: 4px;
-		align-self: stretch;
-		background: var(--pc);
-		border-radius: 4px;
 	}
 	.more {
 		font-size: 0.65rem;
@@ -700,20 +677,66 @@
 		align-items: center;
 		gap: 0.7rem;
 	}
-	button.day-row {
+	.event-block {
+		display: block;
 		width: 100%;
 		text-align: left;
-		background: transparent;
-	}
-	.day-row.clickable {
+		padding: 0.4rem 0.6rem;
+		border-radius: 0.4rem;
+		background: color-mix(in srgb, var(--pc) 18%, white);
+		border-left: 3px solid var(--pc);
+		font-size: 0.88rem;
+		line-height: 1.25;
+		transition: background 120ms ease;
 		cursor: pointer;
-		padding: 0.25rem;
-		margin: -0.25rem;
-		border-radius: 0.45rem;
-		transition: background 100ms ease;
 	}
-	.day-row.clickable:hover {
-		background: var(--color-canvas);
+	.event-block:hover {
+		background: color-mix(in srgb, var(--pc) 28%, white);
+	}
+	.event-title {
+		display: block;
+		font-weight: 600;
+		color: color-mix(in srgb, var(--pc) 65%, var(--color-ink));
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.task-line {
+		display: flex;
+		align-items: center;
+		gap: 0.55rem;
+	}
+	.task-title-btn {
+		flex: 1;
+		text-align: left;
+		font-size: 0.92rem;
+		font-weight: 500;
+		background: transparent;
+		min-width: 0;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.task-title-btn:hover {
+		text-decoration: underline;
+		text-decoration-color: var(--color-muted);
+		text-underline-offset: 3px;
+	}
+	.ghost-line {
+		display: flex;
+		align-items: center;
+		gap: 0.55rem;
+		opacity: 0.55;
+		font-size: 0.92rem;
+	}
+	.ghost-line .rdot.small {
+		width: 8px;
+		height: 8px;
+		border-width: 1.6px;
+	}
+	.ghost-title {
+		color: var(--color-muted);
+		font-style: italic;
 	}
 	.completed-block {
 		margin-top: 1rem;
