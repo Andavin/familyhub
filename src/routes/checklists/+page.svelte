@@ -1,17 +1,27 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import type { PageData } from './$types';
-	import type { Template, TemplateItem } from '$lib/server/schema';
+	import type { Checklist, ChecklistItem } from '$lib/server/schema';
 
 	let { data }: { data: PageData } = $props();
 
-	let editing = $state<Template | null>(null);
+	let editing = $state<Checklist | null>(null);
 	let creating = $state(false);
 
 	let name = $state('');
 	let description = $state('');
 	let emoji = $state('📋');
-	let items = $state<TemplateItem[]>([]);
+	let items = $state<ChecklistItem[]>([]);
+
+	let confirmDelete = $state<Checklist | null>(null);
+	let toast = $state('');
+	let toastTimer: ReturnType<typeof setTimeout> | null = null;
+	function showToast(msg: string) {
+		toast = msg;
+		if (toastTimer) clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => (toast = ''), 2400);
+	}
 
 	function openNew() {
 		creating = true;
@@ -22,7 +32,7 @@
 		items = [{ title: '', assigneeRole: 'shared' }];
 	}
 
-	function openEdit(t: Template) {
+	function openEdit(t: Checklist) {
 		editing = t;
 		creating = false;
 		name = t.name;
@@ -46,7 +56,7 @@
 	async function save() {
 		const cleaned = items.filter((i) => i.title.trim().length > 0);
 		const body = { name, description, emoji, items: cleaned };
-		const url = editing ? `/api/templates/${editing.id}` : '/api/templates';
+		const url = editing ? `/api/checklists/${editing.id}` : '/api/checklists';
 		const method = editing ? 'PATCH' : 'POST';
 		await fetch(url, {
 			method,
@@ -57,45 +67,53 @@
 		close();
 	}
 
-	async function deleteTemplate(t: Template) {
-		if (!confirm(`Delete "${t.name}"?`)) return;
-		await fetch(`/api/templates/${t.id}`, { method: 'DELETE' });
+	async function deleteChecklist() {
+		if (!confirmDelete) return;
+		await fetch(`/api/checklists/${confirmDelete.id}`, { method: 'DELETE' });
+		confirmDelete = null;
 		await invalidateAll();
 	}
 
-	async function applyNow(t: Template) {
-		const res = await fetch(`/api/templates/${t.id}/apply`, {
+	async function applyNow(t: Checklist) {
+		const res = await fetch(`/api/checklists/${t.id}/apply`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: '{}'
 		});
 		if (res.ok) {
 			const d = (await res.json()) as { inserted: unknown[] };
-			alert(`Added ${d.inserted.length} tasks`);
+			showToast(`Added ${d.inserted.length} ${d.inserted.length === 1 ? 'task' : 'tasks'}`);
 		}
 	}
 
 	const isEditing = $derived(creating || editing !== null);
 </script>
 
-<section class="px-4 sm:px-8 pb-3 flex items-center justify-between">
-	<div>
-		<h1 class="text-3xl sm:text-4xl font-display font-bold">Templates</h1>
-		<p class="text-sm text-[color:var(--color-muted)]">
-			Bulk-add presets like "Pre-Trip" or "Saturday Reset"
-		</p>
+<section class="px-4 sm:px-8 pb-3 flex items-center justify-between gap-3">
+	<div class="flex items-center gap-3">
+		<a href="/" aria-label="Back to Tasks" data-testid="back-to-tasks" class="back-btn">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<polyline points="15 18 9 12 15 6" />
+			</svg>
+		</a>
+		<div>
+			<h1 class="text-3xl sm:text-4xl font-display font-bold">Checklists</h1>
+			<p class="text-sm text-[color:var(--color-muted)]">
+				Bulk-add presets like "Pre-Trip" or "Saturday Reset"
+			</p>
+		</div>
 	</div>
 	<button
 		class="px-4 py-2 rounded-full bg-[color:var(--color-list-blue)] text-white text-sm font-semibold shadow"
 		onclick={openNew}
-		data-testid="new-template"
+		data-testid="new-checklist"
 	>
-		＋ New Template
+		＋ New Checklist
 	</button>
 </section>
 
 <div class="px-4 sm:px-8 pb-10 max-w-3xl w-full mx-auto flex-1">
-	{#each data.templates as t (t.id)}
+	{#each data.checklists as t (t.id)}
 		<div class="card">
 			<div class="text-3xl">{t.emoji}</div>
 			<div class="flex-1 min-w-0">
@@ -110,11 +128,11 @@
 			<div class="flex gap-1.5">
 				<button class="btn ghost" onclick={() => applyNow(t)}>Apply</button>
 				<button class="btn ghost" onclick={() => openEdit(t)}>Edit</button>
-				<button class="btn danger" onclick={() => deleteTemplate(t)}>Delete</button>
+				<button class="btn danger" onclick={() => (confirmDelete = t)}>Delete</button>
 			</div>
 		</div>
 	{:else}
-		<p class="text-[color:var(--color-muted)] text-sm">No templates yet.</p>
+		<p class="text-[color:var(--color-muted)] text-sm">No checklists yet.</p>
 	{/each}
 </div>
 
@@ -123,7 +141,7 @@
 	<div class="modal" role="dialog" aria-modal="true">
 		<header class="flex items-center justify-between mb-3">
 			<h2 class="text-lg font-display font-bold">
-				{editing ? 'Edit' : 'New'} Template
+				{editing ? 'Edit' : 'New'} Checklist
 			</h2>
 			<button class="text-xl text-[color:var(--color-muted)]" onclick={close} aria-label="Close">✕</button>
 		</header>
@@ -138,9 +156,9 @@
 				/>
 				<input
 					bind:value={name}
-					placeholder="Template name"
+					placeholder="Checklist name"
 					class="field flex-1"
-					aria-label="Template name"
+					aria-label="Checklist name"
 				/>
 			</div>
 			<input bind:value={description} placeholder="Description (optional)" class="field" />
@@ -173,12 +191,45 @@
 
 		<div class="flex justify-end gap-2">
 			<button class="btn ghost" onclick={close}>Cancel</button>
-			<button class="btn primary" onclick={save} data-testid="save-template">Save</button>
+			<button class="btn primary" onclick={save} data-testid="save-checklist">Save</button>
 		</div>
 	</div>
 {/if}
 
+<ConfirmDialog
+	open={confirmDelete !== null}
+	title={`Delete "${confirmDelete?.name ?? ''}"?`}
+	message="This cannot be undone."
+	confirmLabel="Delete"
+	destructive
+	onconfirm={deleteChecklist}
+	oncancel={() => (confirmDelete = null)}
+/>
+
+{#if toast}
+	<div class="toast" role="status">{toast}</div>
+{/if}
+
 <style>
+	.back-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 40px;
+		height: 40px;
+		border-radius: 9999px;
+		background: white;
+		color: var(--color-list-blue);
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		flex-shrink: 0;
+	}
+	.back-btn svg {
+		width: 18px;
+		height: 18px;
+	}
+	.back-btn:hover {
+		background: var(--color-canvas-2);
+	}
 	.card {
 		display: flex;
 		gap: 1rem;
@@ -246,5 +297,18 @@
 		padding: 1.25rem;
 		z-index: 50;
 		box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.25);
+	}
+	.toast {
+		position: fixed;
+		bottom: 1.5rem;
+		left: 50%;
+		transform: translateX(-50%);
+		background: rgba(28, 28, 30, 0.92);
+		color: white;
+		padding: 0.6rem 1.1rem;
+		border-radius: 9999px;
+		font-size: 0.9rem;
+		z-index: 60;
+		box-shadow: 0 6px 24px -6px rgba(0, 0, 0, 0.3);
 	}
 </style>

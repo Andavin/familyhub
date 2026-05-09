@@ -40,9 +40,9 @@ test.describe('tasks', () => {
 		await expect(firstCol.getByText('Buy birthday cake')).toBeVisible();
 	});
 
-	test('apply template adds tasks across columns', async ({ page }) => {
-		await page.getByTestId('open-templates').click();
-		const button = page.getByTestId(/^apply-template-/).first();
+	test('apply checklist adds tasks across columns', async ({ page }) => {
+		await page.getByTestId('open-checklists').click();
+		const button = page.getByTestId(/^apply-checklist-/).first();
 		await button.click();
 
 		await expect(page.getByText(/Added \d+ tasks?/)).toBeVisible({ timeout: 5000 });

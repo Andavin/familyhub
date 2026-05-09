@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { applyTemplate } from '$lib/server/templates';
+import { applyChecklist } from '$lib/server/checklists';
 
 export const POST: RequestHandler = async ({ params, request }) => {
 	const id = Number(params.id);
@@ -9,7 +9,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		selfUserId?: number;
 		startDate?: string;
 	};
-	const inserted = await applyTemplate(id, {
+	const inserted = await applyChecklist(id, {
 		selfUserId: body.selfUserId,
 		startDate: body.startDate ? new Date(body.startDate) : undefined
 	});

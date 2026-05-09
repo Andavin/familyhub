@@ -37,12 +37,6 @@
 					>Grocery</a
 				>
 				<a
-					href="/templates"
-					class="px-3 py-1.5 rounded-full font-medium transition-colors"
-					class:active={page.url.pathname.startsWith('/templates')}
-					>Templates</a
-				>
-				<a
 					href="/people"
 					class="px-3 py-1.5 rounded-full font-medium transition-colors"
 					class:active={page.url.pathname.startsWith('/people')}

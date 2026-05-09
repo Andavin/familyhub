@@ -1,5 +1,5 @@
 import { db } from './db';
-import { users, lists, templates } from './schema';
+import { users, lists, checklists } from './schema';
 
 async function main() {
 	const existing = await db.select().from(users);
@@ -32,9 +32,9 @@ async function main() {
 		{ name: 'Groceries', color: 'green', ownerId: null, kind: 'grocery', displayOrder: 200 }
 	]);
 
-	await db.insert(templates).values([
+	await db.insert(checklists).values([
 		{
-			name: 'Pre-Trip Checklist',
+			name: 'Pre-Trip',
 			emoji: '✈️',
 			description: 'Everything we always need to do before leaving',
 			items: [

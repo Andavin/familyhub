@@ -65,19 +65,19 @@ export const tasks = sqliteTable(
 	})
 );
 
-export type TemplateItem = {
+export type ChecklistItem = {
 	title: string;
 	assigneeRole: 'self' | 'partner' | 'shared' | number; // userId or role
 	offsetDays?: number;
 	notes?: string;
 };
 
-export const templates = sqliteTable('templates', {
+export const checklists = sqliteTable('checklists', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	name: text('name').notNull(),
 	description: text('description'),
 	emoji: text('emoji').notNull().default('📋'),
-	items: text('items', { mode: 'json' }).$type<TemplateItem[]>().notNull(),
+	items: text('items', { mode: 'json' }).$type<ChecklistItem[]>().notNull(),
 	createdAt: integer('created_at', { mode: 'timestamp_ms' })
 		.notNull()
 		.default(sql`(unixepoch() * 1000)`)
@@ -117,5 +117,5 @@ export type User = typeof users.$inferSelect;
 export type List = typeof lists.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
-export type Template = typeof templates.$inferSelect;
+export type Checklist = typeof checklists.$inferSelect;
 export type GroceryItem = typeof groceryItems.$inferSelect;

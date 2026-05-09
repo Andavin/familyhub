@@ -1,6 +1,6 @@
 import { db } from './db';
-import { tasks, lists, templates, type TemplateItem } from './schema';
-import { eq, and, isNull } from 'drizzle-orm';
+import { tasks, lists, checklists, type ChecklistItem } from './schema';
+import { eq } from 'drizzle-orm';
 
 export type AppliedTaskSeed = {
 	listId: number;
@@ -11,14 +11,14 @@ export type AppliedTaskSeed = {
 };
 
 /**
- * Resolve a template's items into concrete task seeds.
+ * Resolve a checklist's items into concrete task seeds.
  * - 'self'    → first user (caller decides which is "self")
  * - 'partner' → second user
  * - 'shared'  → null assignee, shared list
  * - number    → explicit user id
  */
-export function resolveTemplate(
-	items: TemplateItem[],
+export function resolveChecklist(
+	items: ChecklistItem[],
 	userIds: { selfId: number; partnerId: number | null; sharedListId: number },
 	userListIdByUserId: Map<number, number>,
 	startDate: Date = new Date()
@@ -61,15 +61,19 @@ export function resolveTemplate(
 }
 
 /**
- * Apply a template by id: resolves items and inserts tasks atomically.
+ * Apply a checklist by id: resolves items and inserts tasks atomically.
  * Returns the created task rows.
  */
-export async function applyTemplate(
-	templateId: number,
+export async function applyChecklist(
+	checklistId: number,
 	opts: { selfUserId?: number; startDate?: Date } = {}
 ) {
-	const [tpl] = await db.select().from(templates).where(eq(templates.id, templateId)).limit(1);
-	if (!tpl) throw new Error(`Template ${templateId} not found`);
+	const [cl] = await db
+		.select()
+		.from(checklists)
+		.where(eq(checklists.id, checklistId))
+		.limit(1);
+	if (!cl) throw new Error(`Checklist ${checklistId} not found`);
 
 	const allLists = await db.select().from(lists);
 	const userListIdByUserId = new Map<number, number>();
@@ -90,8 +94,8 @@ export async function applyTemplate(
 	const partnerId = ownerLists[1]?.ownerId ?? null;
 	if (selfId === null) throw new Error('No users configured');
 
-	const seeds = resolveTemplate(
-		tpl.items,
+	const seeds = resolveChecklist(
+		cl.items,
 		{ selfId, partnerId, sharedListId: sharedList.id },
 		userListIdByUserId,
 		opts.startDate ?? new Date()

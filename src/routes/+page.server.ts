@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { users, lists, tasks, templates } from '$lib/server/schema';
+import { users, lists, tasks, checklists } from '$lib/server/schema';
 import { asc, desc, isNull, isNotNull, eq, and, gte } from 'drizzle-orm';
 import { getOrCreateInbox } from '$lib/server/inbox';
 
@@ -28,8 +28,8 @@ export const load: PageServerLoad = async () => {
 			.from(tasks)
 			.where(and(isNotNull(tasks.completedAt), gte(tasks.completedAt, cutoff)))
 			.orderBy(desc(tasks.completedAt)),
-		db.select().from(templates)
+		db.select().from(checklists)
 	]);
 
-	return { users: u, lists: l, openTasks, doneTasks, templates: tmpl };
+	return { users: u, lists: l, openTasks, doneTasks, checklists: tmpl };
 };

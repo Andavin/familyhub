@@ -2,7 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import TaskRow from '$lib/components/TaskRow.svelte';
 	import AddTaskInline from '$lib/components/AddTaskInline.svelte';
-	import ApplyTemplateModal from '$lib/components/ApplyTemplateModal.svelte';
+	import ApplyChecklistModal from '$lib/components/ApplyChecklistModal.svelte';
 	import ListEditModal from '$lib/components/ListEditModal.svelte';
 	import TaskDetailModal from '$lib/components/TaskDetailModal.svelte';
 	import { colorVar } from '$lib/colors';
@@ -25,7 +25,7 @@
 		}))
 	);
 
-	let templateModal = $state(false);
+	let checklistModal = $state(false);
 	let listModalOpen = $state(false);
 	let listBeingEdited = $state<List | null>(null);
 	let taskModalOpen = $state(false);
@@ -86,8 +86,8 @@
 	</div>
 	<button
 		class="px-4 py-2 rounded-full bg-[color:var(--color-list-blue)] text-white text-sm font-semibold shadow"
-		onclick={() => (templateModal = true)}
-		data-testid="open-templates"
+		onclick={() => (checklistModal = true)}
+		data-testid="open-checklists"
 	>
 		＋ Apply Checklist
 	</button>
@@ -168,10 +168,10 @@
 	</button>
 </div>
 
-<ApplyTemplateModal
-	open={templateModal}
-	templates={data.templates}
-	onclose={() => (templateModal = false)}
+<ApplyChecklistModal
+	open={checklistModal}
+	checklists={data.checklists}
+	onclose={() => (checklistModal = false)}
 	onapplied={async (n) => {
 		showToast(`Added ${n} ${n === 1 ? 'task' : 'tasks'}`);
 		await invalidateAll();

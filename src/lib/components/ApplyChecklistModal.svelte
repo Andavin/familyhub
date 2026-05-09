@@ -1,19 +1,19 @@
 <script lang="ts">
-	import type { Template } from '$lib/server/schema';
+	import type { Checklist } from '$lib/server/schema';
 
 	type Props = {
 		open: boolean;
-		templates: Template[];
+		checklists: Checklist[];
 		onclose: () => void;
 		onapplied: (insertedCount: number) => void;
 	};
-	let { open, templates, onclose, onapplied }: Props = $props();
+	let { open, checklists, onclose, onapplied }: Props = $props();
 	let busyId = $state<number | null>(null);
 
-	async function apply(t: Template) {
+	async function apply(t: Checklist) {
 		busyId = t.id;
 		try {
-			const res = await fetch(`/api/templates/${t.id}/apply`, {
+			const res = await fetch(`/api/checklists/${t.id}/apply`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({})
@@ -31,7 +31,7 @@
 
 {#if open}
 	<div class="backdrop" onclick={onclose} role="presentation"></div>
-	<div class="modal" role="dialog" aria-modal="true" aria-label="Apply Template">
+	<div class="modal" role="dialog" aria-modal="true" aria-label="Apply Checklist">
 		<header class="flex items-center justify-between mb-4">
 			<h2 class="text-lg font-display font-bold">Apply a Checklist</h2>
 			<button class="text-[color:var(--color-muted)] text-xl" aria-label="Close" onclick={onclose}>✕</button>
@@ -40,12 +40,12 @@
 			Adds all the tasks in the checklist at once. Items go to the right person automatically.
 		</p>
 		<div class="space-y-2 max-h-[60vh] overflow-y-auto">
-			{#each templates as t (t.id)}
+			{#each checklists as t (t.id)}
 				<button
-					class="template-card"
+					class="checklist-card"
 					disabled={busyId !== null}
 					onclick={() => apply(t)}
-					data-testid="apply-template-{t.id}"
+					data-testid="apply-checklist-{t.id}"
 				>
 					<span class="text-2xl">{t.emoji}</span>
 					<div class="flex-1 text-left">
@@ -66,9 +66,18 @@
 					{/if}
 				</button>
 			{:else}
-				<p class="text-sm text-[color:var(--color-muted)]">No templates yet. Create one in Templates.</p>
+				<p class="text-sm text-[color:var(--color-muted)]">No checklists yet — create one below.</p>
 			{/each}
 		</div>
+
+		<a
+			href="/checklists"
+			class="manage-link"
+			onclick={onclose}
+			data-testid="manage-checklists"
+		>
+			Manage Checklists →
+		</a>
 	</div>
 {/if}
 
@@ -91,7 +100,7 @@
 		z-index: 50;
 		box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.25);
 	}
-	.template-card {
+	.checklist-card {
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
@@ -101,11 +110,24 @@
 		border-radius: 1rem;
 		transition: background 120ms ease;
 	}
-	.template-card:hover {
+	.checklist-card:hover {
 		background: var(--color-canvas-2);
 	}
-	.template-card:disabled {
+	.checklist-card:disabled {
 		opacity: 0.6;
 		cursor: wait;
+	}
+	.manage-link {
+		display: block;
+		margin-top: 0.85rem;
+		padding: 0.7rem 0;
+		text-align: center;
+		font-size: 0.95rem;
+		font-weight: 600;
+		color: var(--color-list-blue);
+		border-top: 1px solid var(--color-divider);
+	}
+	.manage-link:hover {
+		color: color-mix(in srgb, var(--color-list-blue) 80%, black);
 	}
 </style>
