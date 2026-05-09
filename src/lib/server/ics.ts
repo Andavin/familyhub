@@ -38,18 +38,25 @@ function zonedToUtc(
 	mi: number,
 	s: number,
 	tzid: string
-): Date {
+): Date | null {
 	const guess = Date.UTC(y, mo, d, h, mi, s);
-	const fmt = new Intl.DateTimeFormat('en-US', {
-		timeZone: tzid,
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit',
-		hour: '2-digit',
-		minute: '2-digit',
-		second: '2-digit',
-		hour12: false
-	});
+	let fmt: Intl.DateTimeFormat;
+	try {
+		fmt = new Intl.DateTimeFormat('en-US', {
+			timeZone: tzid,
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit',
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+			hour12: false
+		});
+	} catch {
+		// Non-IANA tzid (e.g. Microsoft "Pacific Standard Time") or other
+		// junk — caller falls back to floating local.
+		return null;
+	}
 	const parts = fmt.formatToParts(new Date(guess)).reduce<Record<string, string>>((a, p) => {
 		if (p.type !== 'literal') a[p.type] = p.value;
 		return a;
@@ -91,7 +98,9 @@ function parseIcsDate(
 			return { date: new Date(Date.UTC(Y, Mo, D, H, Mi, S)), allDay: false };
 		}
 		if (tzid) {
-			return { date: zonedToUtc(Y, Mo, D, H, Mi, S, tzid), allDay: false };
+			const zoned = zonedToUtc(Y, Mo, D, H, Mi, S, tzid);
+			if (zoned) return { date: zoned, allDay: false };
+			// fall through to floating local
 		}
 		// Floating local time — interpret in the server's timezone.
 		return { date: new Date(Y, Mo, D, H, Mi, S), allDay: false };
@@ -109,7 +118,9 @@ function getParam(line: string, name: string): string | null {
 	const head = colon === -1 ? line : line.slice(0, colon);
 	const re = new RegExp(`(?:^|;)${name}=([^;:]+)`, 'i');
 	const m = head.match(re);
-	return m ? m[1] : null;
+	if (!m) return null;
+	// Strip surrounding double-quotes per RFC 5545 §3.1.1
+	return m[1].replace(/^"(.*)"$/, '$1');
 }
 
 function unescapeText(s: string | null): string | null {

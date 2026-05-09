@@ -92,4 +92,28 @@ describe('parseIcs', () => {
 	it('returns [] for empty input', () => {
 		expect(parseIcs('', 'X', 'blue')).toEqual([]);
 	});
+
+	it('falls back to floating local on an invalid (non-IANA) TZID', () => {
+		const ics = `BEGIN:VEVENT
+UID:bad-tz
+SUMMARY:Microsoft-style tz
+DTSTART;TZID=Pacific Standard Time:20260509T040000
+END:VEVENT`;
+		const events = parseIcs(ics, 'Test', 'blue');
+		expect(events).toHaveLength(1);
+		// Falls back to floating local — wall clock 4 AM, in whatever the
+		// server's tz is. We just check it didn't throw and produced a valid
+		// Date.
+		expect(events[0].start.getHours()).toBe(4);
+	});
+
+	it('strips quotes from TZID values per RFC 5545', () => {
+		const ics = `BEGIN:VEVENT
+UID:quoted
+SUMMARY:Quoted tz
+DTSTART;TZID="America/Denver":20260509T040000
+END:VEVENT`;
+		const events = parseIcs(ics, 'Test', 'blue');
+		expect(events[0].start.toISOString()).toBe('2026-05-09T10:00:00.000Z');
+	});
 });

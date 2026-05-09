@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import Checkbox from '$lib/components/Checkbox.svelte';
+	import EventDetailModal, {
+		type EventDetail
+	} from '$lib/components/EventDetailModal.svelte';
 	import { colorVar } from '$lib/colors';
 	import type { PageData } from './$types';
 	import type { Task } from '$lib/server/schema';
@@ -88,8 +91,9 @@
 		kind: 'event' | 'reminder' | 'ghost';
 		time: number;
 		task?: Task;
-		// event-only:
+		event?: EventDetail;
 		location?: string | null;
+		endTime?: number;
 		allDay?: boolean;
 	};
 
@@ -117,8 +121,19 @@
 					color: e.color ?? 'blue',
 					kind: 'event',
 					time: start.getTime(),
+					endTime: end.getTime(),
 					location: e.location,
-					allDay: e.allDay
+					allDay: e.allDay,
+					event: {
+						summary: e.summary,
+						location: e.location,
+						description: e.description,
+						start,
+						end,
+						allDay: e.allDay,
+						feedName: e.feedName,
+						color: e.color
+					}
 				});
 			}
 		}
@@ -187,6 +202,13 @@
 	const dayDone = $derived(selected ? completedForDay(selected) : []);
 
 	let completedExpanded = $state(false);
+	let eventModalOpen = $state(false);
+	let eventBeingShown = $state<EventDetail | null>(null);
+
+	function openEvent(ev: EventDetail) {
+		eventBeingShown = ev;
+		eventModalOpen = true;
+	}
 
 	async function setComplete(t: Task, done: boolean) {
 		await fetch(`/api/tasks/${t.id}/complete`, {
@@ -295,45 +317,60 @@
 		</header>
 		<div class="day-list" data-testid="day-list">
 			{#each dayPills as p (p.key)}
-				<div
-					class="day-row"
-					class:ghost={p.kind === 'ghost'}
-					style="--pc: {colorOrLiteral(p.color)}"
-				>
-					{#if p.kind === 'reminder' && p.task}
-						<Checkbox
-							checked={false}
-							color={p.color}
-							size={20}
-							label={`Mark "${p.task.title}" complete`}
-							onchange={(next) => p.task && setComplete(p.task, next)}
-						/>
-					{:else if p.kind === 'ghost'}
-						<span class="rdot big" aria-hidden="true"></span>
-					{:else}
+				{@const meta = p.kind === 'event' && p.allDay
+					? '· All day'
+					: p.kind === 'event' && p.endTime && p.endTime !== p.time
+						? '· ' +
+							new Date(p.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) +
+							' – ' +
+							new Date(p.endTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+						: '· ' +
+							new Date(p.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+				{#if p.kind === 'event' && p.event}
+					<button
+						type="button"
+						class="day-row clickable"
+						style="--pc: {colorOrLiteral(p.color)}"
+						onclick={() => openEvent(p.event!)}
+					>
 						<span class="ebar" aria-hidden="true"></span>
-					{/if}
-					<div class="flex-1 min-w-0">
-						<div class="font-medium truncate">{p.label}</div>
-						<div class="text-xs text-[color:var(--color-muted)]">
-							{p.kind === 'event' ? 'Event' : p.kind === 'ghost' ? 'Repeats' : 'Reminder'}
-							{#if p.kind === 'event' && p.allDay}
-								· All day
-							{:else}
-								·
-								{new Date(p.time).toLocaleTimeString([], {
-									hour: 'numeric',
-									minute: '2-digit'
-								})}
+						<div class="flex-1 min-w-0 text-left">
+							<div class="font-medium truncate">{p.label}</div>
+							<div class="text-xs text-[color:var(--color-muted)]">
+								Event {meta}
+							</div>
+							{#if p.location}
+								<div class="text-xs text-[color:var(--color-muted)] truncate">
+									📍 {p.location}
+								</div>
 							{/if}
 						</div>
-						{#if p.location}
-							<div class="text-xs text-[color:var(--color-muted)] truncate">
-								📍 {p.location}
-							</div>
+					</button>
+				{:else}
+					<div
+						class="day-row"
+						class:ghost={p.kind === 'ghost'}
+						style="--pc: {colorOrLiteral(p.color)}"
+					>
+						{#if p.kind === 'reminder' && p.task}
+							<Checkbox
+								checked={false}
+								color={p.color}
+								size={20}
+								label={`Mark "${p.task.title}" complete`}
+								onchange={(next) => p.task && setComplete(p.task, next)}
+							/>
+						{:else}
+							<span class="rdot big" aria-hidden="true"></span>
 						{/if}
+						<div class="flex-1 min-w-0">
+							<div class="font-medium truncate">{p.label}</div>
+							<div class="text-xs text-[color:var(--color-muted)]">
+								{p.kind === 'ghost' ? 'Repeats' : 'Reminder'} {meta}
+							</div>
+						</div>
 					</div>
-				</div>
+				{/if}
 			{:else}
 				{#if dayDone.length === 0}
 					<p class="text-[color:var(--color-muted)] text-sm">Nothing scheduled.</p>
@@ -387,6 +424,12 @@
 		{/if}
 	</aside>
 </div>
+
+<EventDetailModal
+	open={eventModalOpen}
+	event={eventBeingShown}
+	onclose={() => (eventModalOpen = false)}
+/>
 
 <style>
 	.nav-btn {
@@ -566,6 +609,21 @@
 		display: flex;
 		align-items: center;
 		gap: 0.7rem;
+	}
+	button.day-row {
+		width: 100%;
+		text-align: left;
+		background: transparent;
+	}
+	.day-row.clickable {
+		cursor: pointer;
+		padding: 0.25rem;
+		margin: -0.25rem;
+		border-radius: 0.45rem;
+		transition: background 100ms ease;
+	}
+	.day-row.clickable:hover {
+		background: var(--color-canvas);
 	}
 	.completed-block {
 		margin-top: 1rem;
