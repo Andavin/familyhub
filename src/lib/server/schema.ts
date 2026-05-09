@@ -79,9 +79,12 @@ export const taskCompletions = sqliteTable(
 	'task_completions',
 	{
 		id: integer('id').primaryKey({ autoIncrement: true }),
-		taskId: integer('task_id')
-			.notNull()
-			.references(() => tasks.id, { onDelete: 'cascade' }),
+		// Nullable so the row survives if the parent task is deleted.
+		taskId: integer('task_id').references(() => tasks.id, { onDelete: 'set null' }),
+		// Snapshots taken at completion time so orphan rows still render and
+		// stay grouped under the right list after the parent task is deleted.
+		titleSnapshot: text('title_snapshot').notNull(),
+		listIdSnapshot: integer('list_id_snapshot'),
 		completedAt: integer('completed_at', { mode: 'timestamp_ms' }).notNull(),
 		completedBy: integer('completed_by').references(() => users.id, { onDelete: 'set null' }),
 		dueAtAtCompletion: integer('due_at_at_completion', { mode: 'timestamp_ms' })

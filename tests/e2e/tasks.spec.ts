@@ -260,6 +260,118 @@ test.describe('tasks', () => {
 		expect(days).toBeLessThan(15);
 	});
 
+	test('skip-this-occurrence on a recurring task advances dueAt without logging', async ({
+		page
+	}) => {
+		const firstCol = page.getByTestId(/^column-/).first();
+		const colTestId = await firstCol.getAttribute('data-testid');
+		const listId = colTestId!.split('-')[1];
+
+		const today = new Date();
+		today.setHours(9, 0, 0, 0);
+		const created = await page.evaluate(
+			async ([lid, iso]) => {
+				const r = await fetch('/api/tasks', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						listId: Number(lid),
+						title: 'Skippable chore',
+						dueAt: iso,
+						rrule: 'FREQ=WEEKLY'
+					})
+				});
+				return r.json();
+			},
+			[listId, today.toISOString()]
+		);
+		await page.reload();
+
+		const row = firstCol.locator('[data-testid="task-row"]', { hasText: 'Skippable chore' });
+		await row.first().getByRole('button', { name: 'Open task details' }).click();
+
+		// Tap Delete on a recurring task → 3-action dialog
+		await page.getByTestId('task-delete').click();
+		await expect(page.getByTestId('skip-occurrence')).toBeVisible();
+		await expect(page.getByTestId('delete-series')).toBeVisible();
+
+		await page.getByTestId('skip-occurrence').click();
+
+		// dueAt advanced to next week, no completion was logged
+		const state = await page.evaluate(async (id) => {
+			const t = await fetch('/api/tasks').then((r) => r.json());
+			const found = (t as { id: number; title: string; dueAt: string }[]).find(
+				(x) => x.id === id
+			);
+			return { found, count: (t as { title: string }[]).filter((x) => x.title === 'Skippable chore').length };
+		}, created.id);
+		expect(state.count).toBe(1);
+		expect(state.found).toBeTruthy();
+		const days = (new Date(state.found!.dueAt).getTime() - Date.now()) / 86_400_000;
+		expect(days).toBeGreaterThan(6);
+		expect(days).toBeLessThan(8);
+	});
+
+	test('delete-entire-series removes row but keeps completion history', async ({ page }) => {
+		const firstCol = page.getByTestId(/^column-/).first();
+		const colTestId = await firstCol.getAttribute('data-testid');
+		const listId = colTestId!.split('-')[1];
+
+		const today = new Date();
+		today.setHours(9, 0, 0, 0);
+		const created = await page.evaluate(
+			async ([lid, iso]) => {
+				const r = await fetch('/api/tasks', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						listId: Number(lid),
+						title: 'Doomed chore',
+						dueAt: iso,
+						rrule: 'FREQ=WEEKLY'
+					})
+				});
+				return r.json();
+			},
+			[listId, today.toISOString()]
+		);
+
+		// Complete it once so a completion log entry exists.
+		await page.evaluate(async (id) => {
+			await fetch(`/api/tasks/${id}/complete`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ action: 'complete' })
+			});
+		}, created.id);
+
+		await page.reload();
+
+		// History entry visible in Completed
+		await firstCol.getByTestId(`toggle-completed-${listId}`).click();
+		await expect(firstCol.getByText('Doomed chore')).toBeVisible();
+
+		// Open Scheduled, then delete the series
+		await firstCol.getByTestId(`toggle-scheduled-${listId}`).click();
+		const row = firstCol.locator('[data-testid="task-row"]', { hasText: 'Doomed chore' });
+		await row.first().getByRole('button', { name: 'Open task details' }).click();
+		await page.getByTestId('task-delete').click();
+		await page.getByTestId('delete-series').click();
+
+		// The series no longer exists — verify via API that no active task
+		// has this title anymore.
+		const apiCount = await page.evaluate(async () => {
+			const rows = await fetch('/api/tasks').then((r) => r.json());
+			return (rows as { title: string }[]).filter((r) => r.title === 'Doomed chore').length;
+		});
+		expect(apiCount).toBe(0);
+
+		// But the completion history entry (orphan) is still rendered in Completed.
+		await page.reload();
+		await firstCol.getByTestId(`toggle-completed-${listId}`).click();
+		await expect(firstCol.getByText('Doomed chore')).toBeVisible();
+	});
+
 	test('delete from detail modal asks for confirmation', async ({ page }) => {
 		const firstCol = page.getByTestId(/^column-/).first();
 		const input = firstCol.getByTestId('add-task-input');

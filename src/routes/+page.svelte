@@ -211,6 +211,7 @@
 										color={col.list.color}
 										onComplete={complete}
 										onopen={openTask}
+										readOnly={!!entry.orphan}
 									/>
 								{/each}
 							</div>

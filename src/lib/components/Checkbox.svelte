@@ -7,8 +7,18 @@
 		size?: number;
 		onchange?: (checked: boolean) => void;
 		label?: string;
+		// When true, render as a static visual circle with no click handler —
+		// used for orphan completion entries whose parent task is deleted.
+		readOnly?: boolean;
 	};
-	let { checked, color = 'blue', size = 22, onchange, label }: Props = $props();
+	let {
+		checked,
+		color = 'blue',
+		size = 22,
+		onchange,
+		label,
+		readOnly = false
+	}: Props = $props();
 
 	let toggling = $state(false);
 	function toggle() {
@@ -19,22 +29,38 @@
 	}
 </script>
 
-<button
-	type="button"
-	class="checkbox"
-	class:checked
-	class:toggling
-	style="--c: {colorVar(color)}; --s: {size}px"
-	aria-label={label ?? (checked ? 'Mark incomplete' : 'Mark complete')}
-	aria-pressed={checked}
-	onclick={toggle}
->
-	{#if checked}
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<polyline points="5 12 10 17 19 7" />
-		</svg>
-	{/if}
-</button>
+{#if readOnly}
+	<span
+		class="checkbox readonly"
+		class:checked
+		style="--c: {colorVar(color)}; --s: {size}px"
+		aria-label={label ?? (checked ? 'Completed' : 'Incomplete')}
+		role="img"
+	>
+		{#if checked}
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<polyline points="5 12 10 17 19 7" />
+			</svg>
+		{/if}
+	</span>
+{:else}
+	<button
+		type="button"
+		class="checkbox"
+		class:checked
+		class:toggling
+		style="--c: {colorVar(color)}; --s: {size}px"
+		aria-label={label ?? (checked ? 'Mark incomplete' : 'Mark complete')}
+		aria-pressed={checked}
+		onclick={toggle}
+	>
+		{#if checked}
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<polyline points="5 12 10 17 19 7" />
+			</svg>
+		{/if}
+	</button>
+{/if}
 
 <style>
 	.checkbox {
@@ -48,6 +74,9 @@
 		justify-content: center;
 		transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
 		flex-shrink: 0;
+	}
+	.checkbox.readonly {
+		cursor: default;
 	}
 	.checkbox:hover {
 		border-color: var(--c);

@@ -70,6 +70,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const next = nextOccurrence(task.rrule, task.dueAt ?? now);
 		await db.insert(taskCompletions).values({
 			taskId: task.id,
+			titleSnapshot: task.title,
+			listIdSnapshot: task.listId,
 			completedAt: now,
 			completedBy,
 			dueAtAtCompletion: task.dueAt

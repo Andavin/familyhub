@@ -24,6 +24,7 @@
 	let repeat = $state<'' | 'daily' | 'weekly' | 'monthly' | 'yearly'>('');
 	let interval = $state(1);
 	let confirmDelete = $state(false);
+	let recurringDelete = $state(false);
 	let busy = $state(false);
 
 	$effect(() => {
@@ -110,9 +111,31 @@
 			await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
 			await onsaved();
 			confirmDelete = false;
+			recurringDelete = false;
 			onclose();
 		} finally {
 			busy = false;
+		}
+	}
+
+	async function skipOccurrence() {
+		if (!task) return;
+		busy = true;
+		try {
+			await fetch(`/api/tasks/${task.id}/skip`, { method: 'POST' });
+			await onsaved();
+			recurringDelete = false;
+			onclose();
+		} finally {
+			busy = false;
+		}
+	}
+
+	function openDelete() {
+		if (task?.rrule) {
+			recurringDelete = true;
+		} else {
+			confirmDelete = true;
 		}
 	}
 </script>
@@ -257,11 +280,7 @@
 		</div>
 
 		<div class="flex items-center gap-2 mt-5">
-			<button
-				class="btn danger"
-				onclick={() => (confirmDelete = true)}
-				data-testid="task-delete"
-			>
+			<button class="btn danger" onclick={openDelete} data-testid="task-delete">
 				Delete
 			</button>
 			<div class="flex-1"></div>
@@ -287,6 +306,53 @@
 	onconfirm={deleteTask}
 	oncancel={() => (confirmDelete = false)}
 />
+
+{#if recurringDelete}
+	<div
+		class="backdrop"
+		role="presentation"
+		onclick={() => (recurringDelete = false)}
+	></div>
+	<div
+		class="modal recurring-delete"
+		role="alertdialog"
+		aria-modal="true"
+		aria-labelledby="rec-delete-title"
+	>
+		<h2 id="rec-delete-title" class="text-lg font-display font-bold">
+			Delete repeating task?
+		</h2>
+		<p class="text-sm text-[color:var(--color-muted)] mt-2">
+			This task repeats. Skip just this occurrence (it'll come back at the next date),
+			or delete the whole series? Past completions stay in history.
+		</p>
+		<div class="flex flex-col gap-2 mt-5">
+			<button
+				class="btn skip"
+				onclick={skipOccurrence}
+				disabled={busy}
+				data-testid="skip-occurrence"
+			>
+				Skip this occurrence
+			</button>
+			<button
+				class="btn destructive"
+				onclick={deleteTask}
+				disabled={busy}
+				data-testid="delete-series"
+			>
+				Delete entire series
+			</button>
+			<button
+				class="btn ghost"
+				onclick={() => (recurringDelete = false)}
+				data-testid="recurring-delete-cancel"
+			>
+				Cancel
+			</button>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.backdrop {
@@ -385,5 +451,23 @@
 	}
 	.btn.danger:hover {
 		background: color-mix(in srgb, var(--color-list-red) 12%, transparent);
+	}
+	.modal.recurring-delete {
+		width: min(380px, calc(100vw - 2rem));
+		z-index: 70;
+	}
+	.btn.skip {
+		background: var(--color-list-blue);
+		color: white;
+		padding: 0.7rem 1rem;
+	}
+	.btn.destructive {
+		background: var(--color-list-red);
+		color: white;
+		padding: 0.7rem 1rem;
+	}
+	.btn.skip:disabled,
+	.btn.destructive:disabled {
+		opacity: 0.5;
 	}
 </style>

@@ -262,6 +262,7 @@
 									checked
 									color={userColor(t.assigneeId)}
 									size={20}
+									readOnly={!!entry.orphan}
 									label={`Mark "${t.title}" incomplete`}
 									onchange={(next) => setComplete(t, next)}
 								/>

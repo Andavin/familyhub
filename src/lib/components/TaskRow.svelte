@@ -9,8 +9,11 @@
 		// `done` is the new desired state from the checkbox toggle.
 		onComplete: (task: Task, done: boolean) => void;
 		onopen?: (task: Task) => void;
+		// True for orphan completion rows (parent task deleted) — disables
+		// both the checkbox and the title-tap handler.
+		readOnly?: boolean;
 	};
-	let { task, color, onComplete, onopen }: Props = $props();
+	let { task, color, onComplete, onopen, readOnly = false }: Props = $props();
 
 	const completed = $derived(!!task.completedAt);
 	const due = $derived(task.dueAt ? new Date(task.dueAt) : null);
@@ -34,22 +37,11 @@
 	<Checkbox
 		checked={completed}
 		{color}
+		{readOnly}
 		label={completed ? `Mark "${task.title}" incomplete` : `Mark "${task.title}" complete`}
 		onchange={(next) => onComplete(task, next)}
 	/>
-	<div
-		class="flex-1 min-w-0 cursor-pointer"
-		role="button"
-		tabindex="0"
-		aria-label="Open task details"
-		onclick={open}
-		onkeydown={(e) => {
-			if (e.key === 'Enter' || e.key === ' ') {
-				e.preventDefault();
-				open(e);
-			}
-		}}
-	>
+	{#snippet body()}
 		<div class="flex items-center gap-1.5 min-w-0">
 			{#if priorityLabel}
 				<span class="prio" data-prio={task.priority}>{priorityLabel}</span>
@@ -77,7 +69,27 @@
 				{/if}
 			</div>
 		{/if}
-	</div>
+	{/snippet}
+
+	{#if readOnly}
+		<div class="flex-1 min-w-0">{@render body()}</div>
+	{:else}
+		<div
+			class="flex-1 min-w-0 cursor-pointer"
+			role="button"
+			tabindex="0"
+			aria-label="Open task details"
+			onclick={open}
+			onkeydown={(e) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					open(e);
+				}
+			}}
+		>
+			{@render body()}
+		</div>
+	{/if}
 </div>
 
 <style>
