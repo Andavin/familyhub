@@ -6,6 +6,7 @@
 	import ListEditModal from '$lib/components/ListEditModal.svelte';
 	import TaskDetailModal from '$lib/components/TaskDetailModal.svelte';
 	import { colorVar } from '$lib/colors';
+	import { isOverdue } from '$lib/format';
 	import type { PageData } from './$types';
 	import type { Task, List } from '$lib/server/schema';
 	import type { DoneEntry } from '$lib/server/done';
@@ -33,15 +34,25 @@
 			const today = listOpen.filter(
 				(t) => !t.dueAt || new Date(t.dueAt).getTime() <= cutoff
 			);
-			// Scheduled: every date-bound task (today, overdue, future) so the
-			// user has a single place to see and adjust scheduled work. This
-			// intentionally overlaps with Today for items due ≤ end of today.
-			const scheduled = listOpen
-				.filter((t) => t.dueAt)
-				.sort(
-					(a, b) =>
-						new Date(a.dueAt as Date).getTime() - new Date(b.dueAt as Date).getTime()
-				);
+			// Scheduled: date-bound tasks that aren't overdue yet — i.e. due
+			// today (still actionable) or in the future. Overdue items already
+			// surface in Today with the red pill, so duplicating them here
+			// just adds clutter.
+			//
+			// Overdue *recurring* tasks are a special case: the stored row
+			// stays in Today (overdue), but we want a preview of the next
+			// upcoming occurrence in Scheduled. The server pre-projects those
+			// into projectedRecurring; merge them into this column's Scheduled.
+			const projected = data.projectedRecurring.filter((t) => t.listId === list.id);
+			const scheduled = [
+				...listOpen.filter(
+					(t) => t.dueAt && !isOverdue(new Date(t.dueAt), t.dueHasTime)
+				),
+				...projected
+			].sort(
+				(a, b) =>
+					new Date(a.dueAt as Date).getTime() - new Date(b.dueAt as Date).getTime()
+			);
 			return {
 				list,
 				today,

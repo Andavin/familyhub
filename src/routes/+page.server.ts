@@ -1,9 +1,11 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { users, lists, tasks, checklists } from '$lib/server/schema';
+import { users, lists, tasks, checklists, type Task } from '$lib/server/schema';
 import { asc, isNull, eq } from 'drizzle-orm';
 import { getOrCreateInbox } from '$lib/server/inbox';
 import { loadDoneEntries } from '$lib/server/done';
+import { isOverdue } from '$lib/format';
+import { nextOccurrence } from '$lib/server/recurrence';
 
 export const load: PageServerLoad = async () => {
 	await getOrCreateInbox();
@@ -27,5 +29,17 @@ export const load: PageServerLoad = async () => {
 		db.select().from(checklists)
 	]);
 
-	return { users: u, lists: l, openTasks, doneEntries, checklists: tmpl };
+	// For overdue recurring tasks, project the next-after-now occurrence so
+	// the upcoming instance still shows in Scheduled. The actual stored row
+	// stays in Today with its overdue flag — this is purely a visual preview.
+	const projectedRecurring: Task[] = [];
+	for (const t of openTasks) {
+		if (!t.rrule || !t.dueAt) continue;
+		if (!isOverdue(new Date(t.dueAt), t.dueHasTime)) continue;
+		const next = nextOccurrence(t.rrule, new Date());
+		if (!next) continue;
+		projectedRecurring.push({ ...t, dueAt: next });
+	}
+
+	return { users: u, lists: l, openTasks, projectedRecurring, doneEntries, checklists: tmpl };
 };

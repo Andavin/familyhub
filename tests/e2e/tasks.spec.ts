@@ -131,6 +131,101 @@ test.describe('tasks', () => {
 		await expect(firstCol.getByText('Today thing')).toHaveCount(2);
 	});
 
+	test('overdue tasks appear in Today only, not in Scheduled', async ({ page }) => {
+		const firstCol = page.getByTestId(/^column-/).first();
+		const colTestId = await firstCol.getAttribute('data-testid');
+		const listId = colTestId!.split('-')[1];
+
+		// Create an overdue (yesterday-due-with-time) task
+		const yesterday = new Date(Date.now() - 86_400_000);
+		yesterday.setHours(9, 0, 0, 0);
+		await page.evaluate(
+			async ([lid, iso]) => {
+				await fetch('/api/tasks', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						listId: Number(lid),
+						title: 'Overdue thing',
+						dueAt: iso
+					})
+				});
+				// PATCH to set dueHasTime since POST doesn't accept it
+				const tasks = await fetch('/api/tasks').then((r) => r.json());
+				const t = (tasks as { id: number; title: string }[]).find((x) => x.title === 'Overdue thing');
+				if (t) {
+					await fetch(`/api/tasks/${t.id}`, {
+						method: 'PATCH',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ dueHasTime: true })
+					});
+				}
+			},
+			[listId, yesterday.toISOString()]
+		);
+
+		await page.reload();
+		await page.waitForLoadState('networkidle');
+
+		// Visible in Today (with overdue pill) — only one row, no duplicate in Scheduled
+		await expect(firstCol.getByText('Overdue thing')).toHaveCount(1);
+		await expect(firstCol.getByText('Overdue').first()).toBeVisible();
+
+		// If a Scheduled toggle exists, expanding it should NOT reveal Overdue thing
+		const scheduledToggle = firstCol.getByTestId(`toggle-scheduled-${listId}`);
+		if ((await scheduledToggle.count()) > 0) {
+			await scheduledToggle.click();
+			await expect(firstCol.getByText('Overdue thing')).toHaveCount(1);
+		}
+	});
+
+	test('overdue recurring task: overdue in Today, next occurrence projected into Scheduled', async ({
+		page
+	}) => {
+		const firstCol = page.getByTestId(/^column-/).first();
+		const colTestId = await firstCol.getAttribute('data-testid');
+		const listId = colTestId!.split('-')[1];
+
+		// Recurring weekly task whose current dueAt is in the past
+		const yesterday = new Date(Date.now() - 86_400_000);
+		yesterday.setHours(9, 0, 0, 0);
+		await page.evaluate(
+			async ([lid, iso]) => {
+				const r = await fetch('/api/tasks', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						listId: Number(lid),
+						title: 'Overdue weekly',
+						dueAt: iso,
+						rrule: 'FREQ=WEEKLY'
+					})
+				});
+				const j = await r.json();
+				await fetch(`/api/tasks/${j.id}`, {
+					method: 'PATCH',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ dueHasTime: true })
+				});
+			},
+			[listId, yesterday.toISOString()]
+		);
+
+		await page.reload();
+		await page.waitForLoadState('networkidle');
+
+		// Today section shows the overdue instance
+		const allRows = firstCol.locator('[data-testid="task-row"]', {
+			hasText: 'Overdue weekly'
+		});
+		await expect(allRows).toHaveCount(1);
+		await expect(firstCol.getByText('Overdue').first()).toBeVisible();
+
+		// Expand Scheduled — projected next instance shows here too
+		await firstCol.getByTestId(`toggle-scheduled-${listId}`).click();
+		await expect(allRows).toHaveCount(2);
+	});
+
 	test('complete + uncomplete on a recurring task does not accumulate spawns', async ({
 		page
 	}) => {
@@ -295,7 +390,11 @@ test.describe('tasks', () => {
 		await expect(page.getByTestId('skip-occurrence')).toBeVisible();
 		await expect(page.getByTestId('delete-series')).toBeVisible();
 
+		const skipResp = page.waitForResponse((r) =>
+			/\/api\/tasks\/\d+\/skip$/.test(r.url())
+		);
 		await page.getByTestId('skip-occurrence').click();
+		await skipResp;
 
 		// dueAt advanced to next week, no completion was logged
 		const state = await page.evaluate(async (id) => {
