@@ -107,7 +107,7 @@
 		</label>
 
 		<div class="flex items-center gap-2">
-			{#if list}
+			{#if list && list.system === 'none'}
 				<button class="btn danger" onclick={() => (confirmDelete = true)} data-testid="list-delete">
 					Delete
 				</button>

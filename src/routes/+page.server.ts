@@ -2,8 +2,12 @@ import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import { users, lists, tasks, templates } from '$lib/server/schema';
 import { asc, desc, isNull, isNotNull, eq, and, gte } from 'drizzle-orm';
+import { getOrCreateInbox } from '$lib/server/inbox';
 
 export const load: PageServerLoad = async () => {
+	// Make sure the inbox exists before we read lists.
+	await getOrCreateInbox();
+
 	// Show completed within the last 30 days; older completes drop off automatically.
 	const cutoff = new Date(Date.now() - 30 * 86_400_000);
 
