@@ -1,8 +1,14 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/state';
+	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import { initTheme } from '$lib/theme.svelte';
 
 	let { children } = $props();
+
+	$effect(() => {
+		initTheme();
+	});
 </script>
 
 <svelte:head>
@@ -42,6 +48,7 @@
 					class:active={page.url.pathname.startsWith('/people')}
 					>People</a
 				>
+				<ThemeToggle />
 			</div>
 		</nav>
 		<main class="flex-1 flex flex-col min-h-0">
@@ -54,7 +61,7 @@
 	.active {
 		background: var(--color-card);
 		color: var(--color-list-blue);
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 	}
 	a {
 		color: var(--color-ink-2);

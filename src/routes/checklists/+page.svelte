@@ -217,9 +217,9 @@
 		width: 40px;
 		height: 40px;
 		border-radius: 9999px;
-		background: white;
+		background: var(--color-card);
 		color: var(--color-list-blue);
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 		flex-shrink: 0;
 	}
 	.back-btn svg {
@@ -233,10 +233,10 @@
 		display: flex;
 		gap: 1rem;
 		align-items: center;
-		background: white;
+		background: var(--color-card);
 		padding: 1rem 1.25rem;
 		border-radius: 1.1rem;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 		margin-bottom: 0.75rem;
 	}
 	.btn {
@@ -280,7 +280,7 @@
 	.backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.4);
+		background: var(--color-backdrop);
 		z-index: 40;
 	}
 	.modal {
@@ -291,23 +291,23 @@
 		width: min(620px, calc(100vw - 2rem));
 		max-height: 90vh;
 		overflow-y: auto;
-		background: white;
+		background: var(--color-card);
 		border-radius: 1.5rem;
 		padding: 1.25rem;
 		z-index: 50;
-		box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.25);
+		box-shadow: 0 25px 60px -15px var(--color-shadow-lg);
 	}
 	.toast {
 		position: fixed;
 		bottom: 1.5rem;
 		left: 50%;
 		transform: translateX(-50%);
-		background: rgba(28, 28, 30, 0.92);
+		background: var(--color-toast-bg);
 		color: white;
 		padding: 0.6rem 1.1rem;
 		border-radius: 9999px;
 		font-size: 0.9rem;
 		z-index: 60;
-		box-shadow: 0 6px 24px -6px rgba(0, 0, 0, 0.3);
+		box-shadow: 0 6px 24px -6px var(--color-shadow-lg);
 	}
 </style>

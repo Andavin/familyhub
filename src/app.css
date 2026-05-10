@@ -10,17 +10,31 @@
 /*
  * App palette. Defined on :root (not @theme) so every variable always ships
  * regardless of whether Tailwind sees it referenced as a utility class.
- * We reference these via `var(...)` in inline styles and component CSS,
- * which Tailwind's tree-shaker can't detect, so it would otherwise drop them.
+ * Switch themes by setting `data-theme="dark"` on <html>; the dark block
+ * below overrides each token. Keep all color references via var() so a
+ * single attribute flip cascades through the whole UI.
  */
-:root {
+:root,
+:root[data-theme='light'] {
+	color-scheme: light;
+
 	--color-canvas: #fef7f0;
 	--color-canvas-2: #fff1e3;
+	--color-bg-accent: #ffe9d0;
 	--color-card: #ffffff;
 	--color-ink: #1c1c1e;
 	--color-ink-2: #3a3a3c;
 	--color-muted: #8e8e93;
 	--color-divider: rgba(60, 60, 67, 0.1);
+	--color-control-border: #c7c7cc;
+
+	--color-shadow-sm: rgba(0, 0, 0, 0.05);
+	--color-shadow-md: rgba(0, 0, 0, 0.1);
+	--color-shadow-lg: rgba(0, 0, 0, 0.25);
+	--color-backdrop: rgba(0, 0, 0, 0.4);
+	--color-hover: rgba(255, 255, 255, 0.5);
+	--color-toast-bg: rgba(28, 28, 30, 0.92);
+	--color-toast-fg: #ffffff;
 
 	--color-list-red: #ff3b30;
 	--color-list-orange: #ff9500;
@@ -36,11 +50,52 @@
 	--color-list-brown: #a2845e;
 }
 
+/*
+ * Dark theme — skews to true black for OLED. Surfaces rise in tiny steps
+ * (#000 → #0d0d10 → #16161a) so cards/modals remain distinguishable
+ * without bleeding light. Apple's "dark variant" system colors are used
+ * for the accents because they're tuned for contrast on near-black.
+ */
+:root[data-theme='dark'] {
+	color-scheme: dark;
+
+	--color-canvas: #000000;
+	--color-canvas-2: #0d0d10;
+	--color-bg-accent: #0a0806;
+	--color-card: #16161a;
+	--color-ink: #f5f5f7;
+	--color-ink-2: #c7c7cc;
+	--color-muted: #8e8e93;
+	--color-divider: rgba(255, 255, 255, 0.08);
+	--color-control-border: #48484a;
+
+	--color-shadow-sm: rgba(0, 0, 0, 0.5);
+	--color-shadow-md: rgba(0, 0, 0, 0.6);
+	--color-shadow-lg: rgba(0, 0, 0, 0.75);
+	--color-backdrop: rgba(0, 0, 0, 0.7);
+	--color-hover: rgba(255, 255, 255, 0.06);
+	--color-toast-bg: rgba(38, 38, 42, 0.95);
+	--color-toast-fg: #f5f5f7;
+
+	--color-list-red: #ff453a;
+	--color-list-orange: #ff9f0a;
+	--color-list-yellow: #ffd60a;
+	--color-list-green: #30d158;
+	--color-list-mint: #66d4cf;
+	--color-list-teal: #40c8e0;
+	--color-list-cyan: #64d2ff;
+	--color-list-blue: #0a84ff;
+	--color-list-indigo: #5e5ce6;
+	--color-list-purple: #bf5af2;
+	--color-list-pink: #ff375f;
+	--color-list-brown: #ac8e68;
+}
+
 html,
 body {
 	background:
 		radial-gradient(circle at 20% 0%, var(--color-canvas-2) 0%, transparent 45%),
-		radial-gradient(circle at 90% 100%, #ffe9d0 0%, transparent 50%),
+		radial-gradient(circle at 90% 100%, var(--color-bg-accent) 0%, transparent 50%),
 		var(--color-canvas);
 	color: var(--color-ink);
 	font-family: var(--font-sans);

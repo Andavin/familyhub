@@ -148,9 +148,9 @@
 		align-items: center;
 		gap: 0.6rem;
 		padding: 0.85rem 1rem;
-		background: white;
+		background: var(--color-card);
 		border-radius: 1rem;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 		margin-bottom: 1.25rem;
 	}
 	.plus {
@@ -159,9 +159,9 @@
 		font-size: 1.2rem;
 	}
 	.list {
-		background: white;
+		background: var(--color-card);
 		border-radius: 1.25rem;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 		overflow: hidden;
 	}
 	.group {

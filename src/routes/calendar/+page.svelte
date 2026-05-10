@@ -513,9 +513,9 @@
 	.nav-btn {
 		padding: 0.4rem 0.85rem;
 		border-radius: 9999px;
-		background: white;
+		background: var(--color-card);
 		font-size: 0.9rem;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 	}
 	.chips {
 		display: flex;
@@ -528,11 +528,11 @@
 		gap: 0.35rem;
 		padding: 0.3rem 0.75rem;
 		border-radius: 9999px;
-		background: white;
+		background: var(--color-card);
 		font-size: 0.78rem;
 		font-weight: 600;
 		color: var(--color-muted);
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 		opacity: 0.55;
 		transition: opacity 120ms ease, background 120ms ease;
 	}
@@ -551,10 +551,10 @@
 		line-height: 1;
 	}
 	.cal {
-		background: white;
+		background: var(--color-card);
 		border-radius: 1.25rem;
 		padding: 0.75rem 1rem 1rem;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 	}
 	.dow {
 		display: grid;
@@ -651,11 +651,11 @@
 		color: var(--color-muted);
 	}
 	.day-detail {
-		background: white;
+		background: var(--color-card);
 		border-radius: 1.25rem;
 		padding: 1rem 1.25rem;
 		min-width: 280px;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 	}
 	@media (min-width: 1024px) {
 		.day-detail {
@@ -845,7 +845,7 @@
 	.backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.4);
+		background: var(--color-backdrop);
 		z-index: 40;
 	}
 	.modal.hour-overflow-modal {
@@ -856,11 +856,11 @@
 		width: min(440px, calc(100vw - 2rem));
 		max-height: 90vh;
 		overflow-y: auto;
-		background: white;
+		background: var(--color-card);
 		border-radius: 1.5rem;
 		padding: 1.25rem;
 		z-index: 50;
-		box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.25);
+		box-shadow: 0 25px 60px -15px var(--color-shadow-lg);
 	}
 	.overflow-list {
 		display: flex;

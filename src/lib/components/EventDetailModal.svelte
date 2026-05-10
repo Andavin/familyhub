@@ -126,7 +126,7 @@
 	.backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.4);
+		background: var(--color-backdrop);
 		z-index: 40;
 	}
 	.modal {
@@ -137,11 +137,11 @@
 		width: min(480px, calc(100vw - 2rem));
 		max-height: 90vh;
 		overflow-y: auto;
-		background: white;
+		background: var(--color-card);
 		border-radius: 1.5rem;
 		padding: 1.25rem;
 		z-index: 50;
-		box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.25);
+		box-shadow: 0 25px 60px -15px var(--color-shadow-lg);
 	}
 	.ebar-big {
 		width: 4px;

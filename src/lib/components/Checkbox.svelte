@@ -67,7 +67,7 @@
 		width: var(--s);
 		height: var(--s);
 		border-radius: 9999px;
-		border: 1.6px solid #c7c7cc;
+		border: 1.6px solid var(--color-control-border);
 		background: transparent;
 		display: inline-flex;
 		align-items: center;

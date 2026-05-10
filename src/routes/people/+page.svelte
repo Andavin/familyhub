@@ -106,10 +106,10 @@
 		display: flex;
 		gap: 1rem;
 		align-items: center;
-		background: white;
+		background: var(--color-card);
 		padding: 1rem 1.25rem;
 		border-radius: 1.1rem;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 		margin-bottom: 0.75rem;
 		width: 100%;
 		text-align: left;
@@ -126,10 +126,10 @@
 		flex-shrink: 0;
 	}
 	.shared-section {
-		background: white;
+		background: var(--color-card);
 		padding: 1.25rem 1.25rem 1rem;
 		border-radius: 1.1rem;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 		margin-top: 1.25rem;
 	}
 	.shared-icon {

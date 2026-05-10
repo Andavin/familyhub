@@ -169,10 +169,10 @@
 		left: 0;
 		z-index: 60;
 		width: min(340px, calc(100vw - 2rem));
-		background: white;
+		background: var(--color-card);
 		border-radius: 1rem;
 		padding: 0.5rem;
-		box-shadow: 0 12px 32px -10px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--color-divider);
+		box-shadow: 0 12px 32px -10px var(--color-shadow-lg), 0 0 0 1px var(--color-divider);
 	}
 	.tabs {
 		display: flex;

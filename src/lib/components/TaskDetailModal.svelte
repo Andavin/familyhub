@@ -358,7 +358,7 @@
 	.backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.4);
+		background: var(--color-backdrop);
 		z-index: 40;
 	}
 	.modal {
@@ -369,11 +369,11 @@
 		width: min(540px, calc(100vw - 2rem));
 		max-height: 92vh;
 		overflow-y: auto;
-		background: white;
+		background: var(--color-card);
 		border-radius: 1.5rem;
 		padding: 1.25rem;
 		z-index: 50;
-		box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.25);
+		box-shadow: 0 25px 60px -15px var(--color-shadow-lg);
 	}
 	.field-lg {
 		width: 100%;
@@ -424,10 +424,10 @@
 		color: var(--color-ink-2);
 	}
 	.seg button.active {
-		background: white;
+		background: var(--color-card);
 		color: var(--color-list-orange);
 		font-weight: 700;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 	}
 	.btn {
 		padding: 0.5rem 1.05rem;

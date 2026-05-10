@@ -298,7 +298,7 @@
 		flex: 0 0 80vw;
 		display: flex;
 		flex-direction: column;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 	}
 	@media (min-width: 640px) {
 		.column {
@@ -393,7 +393,7 @@
 		align-self: stretch;
 	}
 	.add-column:hover {
-		background: rgba(255, 255, 255, 0.5);
+		background: var(--color-hover);
 		color: var(--color-ink);
 		border-color: var(--color-ink);
 	}
@@ -406,12 +406,12 @@
 		bottom: 1.5rem;
 		left: 50%;
 		transform: translateX(-50%);
-		background: rgba(28, 28, 30, 0.92);
-		color: white;
+		background: var(--color-toast-bg);
+		color: var(--color-toast-fg);
 		padding: 0.6rem 1.1rem;
 		border-radius: 9999px;
 		font-size: 0.9rem;
 		z-index: 60;
-		box-shadow: 0 6px 24px -6px rgba(0, 0, 0, 0.3);
+		box-shadow: 0 6px 24px -6px var(--color-shadow-lg);
 	}
 </style>

@@ -28,7 +28,7 @@
 <div class="min-h-screen flex items-center justify-center p-6">
 	<form
 		onsubmit={submit}
-		class="w-full max-w-sm bg-white rounded-3xl shadow-xl p-8 space-y-5"
+		class="w-full max-w-sm bg-[color:var(--color-card)] rounded-3xl shadow-xl p-8 space-y-5"
 	>
 		<div class="text-center space-y-1">
 			<div class="text-4xl">🏠</div>
