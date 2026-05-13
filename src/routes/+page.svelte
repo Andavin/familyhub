@@ -3,6 +3,7 @@
 	import TaskRow from '$lib/components/TaskRow.svelte';
 	import AddTaskInline from '$lib/components/AddTaskInline.svelte';
 	import ApplyChecklistModal from '$lib/components/ApplyChecklistModal.svelte';
+	import CompletedByModal from '$lib/components/CompletedByModal.svelte';
 	import ListEditModal from '$lib/components/ListEditModal.svelte';
 	import TaskDetailModal from '$lib/components/TaskDetailModal.svelte';
 	import { colorVar } from '$lib/colors';
@@ -69,6 +70,10 @@
 	let taskBeingEdited = $state<Task | null>(null);
 	let expandedDone = $state<Record<number, boolean>>({});
 	let expandedScheduled = $state<Record<number, boolean>>({});
+	// When the user checks off an unassigned task we ask who completed it
+	// before posting. Holding the pending task here is what keeps the
+	// modal open and remembers what to post when they pick.
+	let pendingCompletion = $state<Task | null>(null);
 
 	let toast = $state('');
 	let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -78,13 +83,27 @@
 		toastTimer = setTimeout(() => (toast = ''), 2400);
 	}
 
-	async function complete(t: Task, done: boolean) {
+	async function postComplete(t: Task, done: boolean, completedById: number | null) {
 		await fetch(`/api/tasks/${t.id}/complete`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ action: done ? 'complete' : 'uncomplete' })
+			body: JSON.stringify({
+				action: done ? 'complete' : 'uncomplete',
+				completedById
+			})
 		});
 		await invalidateAll();
+	}
+
+	async function complete(t: Task, done: boolean) {
+		// Assigned tasks → the assignee is the implicit "did it" answer.
+		// Unassigned + completing → ask who, since we have no default. Uncompleting
+		// always passes through (the server clears completedBy regardless).
+		if (done && t.assigneeId === null) {
+			pendingCompletion = t;
+			return;
+		}
+		await postComplete(t, done, t.assigneeId);
 	}
 
 	async function addTask(col: Column, title: string) {
@@ -267,6 +286,18 @@
 	onsaved={async () => {
 		await invalidateAll();
 	}}
+/>
+
+<CompletedByModal
+	open={pendingCompletion !== null}
+	users={data.users}
+	taskTitle={pendingCompletion?.title ?? ''}
+	onpick={async (userId) => {
+		const t = pendingCompletion;
+		pendingCompletion = null;
+		if (t) await postComplete(t, true, userId);
+	}}
+	oncancel={() => (pendingCompletion = null)}
 />
 
 {#if toast}

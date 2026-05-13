@@ -37,10 +37,17 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	if (body.action !== 'complete' && body.action !== 'uncomplete') {
 		throw error(400, 'action must be "complete" or "uncomplete"');
 	}
-	const completedBy = body.completedById ?? null;
 
 	const [task] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
 	if (!task) throw error(404, 'not found');
+
+	// If the caller didn't say who completed it, default to the task's
+	// assignee. The kiosk UI sends an explicit `completedById` for
+	// unassigned tasks (via a who-did-it picker); for assigned tasks the
+	// assignee is the obvious answer, so we don't force the UI to repeat
+	// itself.
+	const completedBy =
+		body.completedById !== undefined ? body.completedById : task.assigneeId;
 
 	if (body.action === 'uncomplete') {
 		const [latestCompletion] = await db
@@ -70,6 +77,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const next = nextOccurrence(task.rrule, task.dueAt ?? now);
 		await db.insert(taskCompletions).values({
 			taskId: task.id,
+			seriesIdSnapshot: task.id,
 			titleSnapshot: task.title,
 			listIdSnapshot: task.listId,
 			completedAt: now,

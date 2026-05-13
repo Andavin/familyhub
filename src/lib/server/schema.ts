@@ -85,12 +85,18 @@ export const taskCompletions = sqliteTable(
 		// stay grouped under the right list after the parent task is deleted.
 		titleSnapshot: text('title_snapshot').notNull(),
 		listIdSnapshot: integer('list_id_snapshot'),
+		// Stable identifier for the recurring series. Mirrors `taskId` at
+		// completion time, but unlike `taskId` it is NOT nulled when the
+		// parent task row is deleted — so streak / count queries that span
+		// a delete still group correctly. Pre-existing rows may be null.
+		seriesIdSnapshot: integer('series_id_snapshot'),
 		completedAt: integer('completed_at', { mode: 'timestamp_ms' }).notNull(),
 		completedBy: integer('completed_by').references(() => users.id, { onDelete: 'set null' }),
 		dueAtAtCompletion: integer('due_at_at_completion', { mode: 'timestamp_ms' })
 	},
 	(t) => ({
 		taskIdx: index('task_completions_task_idx').on(t.taskId),
+		seriesIdx: index('task_completions_series_idx').on(t.seriesIdSnapshot),
 		completedIdx: index('task_completions_completed_idx').on(t.completedAt)
 	})
 );

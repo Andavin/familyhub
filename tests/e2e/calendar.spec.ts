@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login } from './setup';
+import { completeRow, login } from './setup';
 
 test.describe('calendar', () => {
 	test.beforeEach(async ({ page }) => {
@@ -65,7 +65,7 @@ test.describe('calendar', () => {
 		await expect(dayList.getByText('Calendar complete test')).toBeVisible();
 
 		const row = dayList.locator('div.task-line', { hasText: 'Calendar complete test' });
-		await row.getByRole('button', { name: /Mark .* complete/i }).click();
+		await completeRow(page, row);
 		await expect(dayList.getByText('Calendar complete test')).toHaveCount(0, { timeout: 5000 });
 
 		await page.getByTestId('cal-toggle-completed').click();

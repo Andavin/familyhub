@@ -5,6 +5,7 @@
 		type EventDetail
 	} from '$lib/components/EventDetailModal.svelte';
 	import TaskDetailModal from '$lib/components/TaskDetailModal.svelte';
+	import CompletedByModal from '$lib/components/CompletedByModal.svelte';
 	import { colorVar } from '$lib/colors';
 	import type { PageData } from './$types';
 	import type { Task } from '$lib/server/schema';
@@ -220,6 +221,7 @@
 	let overflowOpen = $state(false);
 	let overflowItems = $state<Pill[]>([]);
 	let overflowHourLabel = $state('');
+	let pendingCompletion = $state<Task | null>(null);
 
 	function openEvent(ev: EventDetail) {
 		eventBeingShown = ev;
@@ -239,13 +241,24 @@
 		overflowOpen = true;
 	}
 
-	async function setComplete(t: Task, done: boolean) {
+	async function postComplete(t: Task, done: boolean, completedById: number | null) {
 		await fetch(`/api/tasks/${t.id}/complete`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ action: done ? 'complete' : 'uncomplete' })
+			body: JSON.stringify({
+				action: done ? 'complete' : 'uncomplete',
+				completedById
+			})
 		});
 		await invalidateAll();
+	}
+
+	async function setComplete(t: Task, done: boolean) {
+		if (done && t.assigneeId === null) {
+			pendingCompletion = t;
+			return;
+		}
+		await postComplete(t, done, t.assigneeId);
 	}
 </script>
 
@@ -486,6 +499,18 @@
 	onsaved={async () => {
 		await invalidateAll();
 	}}
+/>
+
+<CompletedByModal
+	open={pendingCompletion !== null}
+	users={data.users}
+	taskTitle={pendingCompletion?.title ?? ''}
+	onpick={async (userId) => {
+		const t = pendingCompletion;
+		pendingCompletion = null;
+		if (t) await postComplete(t, true, userId);
+	}}
+	oncancel={() => (pendingCompletion = null)}
 />
 
 {#if overflowOpen}

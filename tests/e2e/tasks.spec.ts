@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login } from './setup';
+import { completeRow, login } from './setup';
 
 test.describe('tasks', () => {
 	test.beforeEach(async ({ page }) => {
@@ -25,7 +25,7 @@ test.describe('tasks', () => {
 
 		// Complete — disappears from open
 		const row = firstCol.locator('[data-testid="task-row"]', { hasText: 'Buy birthday cake' });
-		await row.getByRole('button', { name: /Mark .* complete/i }).click();
+		await completeRow(page, row);
 		await expect(firstCol.locator('[data-testid="task-row"]', { hasText: 'Buy birthday cake' }).first()).toHaveCount(0, { timeout: 5000 });
 
 		// Completed section should appear with count >= 1; expand it
@@ -264,7 +264,7 @@ test.describe('tasks', () => {
 
 		// Complete it. Recurring complete advances dueAt to next week.
 		const row = allRows.first();
-		await row.getByRole('button', { name: /Mark .* complete/i }).click();
+		await completeRow(page, row);
 
 		// Today section no longer shows it (task moved to next week).
 		await expect(allRows).toHaveCount(0, { timeout: 5000 });
@@ -323,10 +323,7 @@ test.describe('tasks', () => {
 		const allRows = firstCol.locator('[data-testid="task-row"]', {
 			hasText: 'Twice-completed chore'
 		});
-		await allRows
-			.first()
-			.getByRole('button', { name: /Mark "Twice-completed chore" complete/i })
-			.click();
+		await completeRow(page, allRows.first());
 		// Wait for state to settle: row disappears from Today
 		await expect(allRows).toHaveCount(0, { timeout: 5000 });
 
@@ -336,10 +333,7 @@ test.describe('tasks', () => {
 
 		// Second completion: tap the empty circle on the Scheduled row.
 		// This MUST advance to +14d, not rewind to today.
-		await allRows
-			.first()
-			.getByRole('button', { name: /Mark "Twice-completed chore" complete/i })
-			.click();
+		await completeRow(page, allRows.first());
 
 		// dueAt should now be 14 days from today
 		const due = await page.evaluate(async () => {
