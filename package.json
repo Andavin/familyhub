@@ -21,8 +21,7 @@
     "@sveltejs/kit": "^2.22.0",
     "better-sqlite3": "^11.7.0",
     "drizzle-orm": "^0.36.4",
-    "rrule": "^2.8.1",
-    "tsdav": "^2.1.5"
+    "rrule": "^2.8.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

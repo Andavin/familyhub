@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { calendarFeeds } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import { clearIcsCache } from '$lib/server/ics';
+import { validateFeedUrl } from '$lib/server/url-allowlist';
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const id = Number(params.id);
@@ -16,7 +17,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	}>;
 	const update: Record<string, unknown> = {};
 	if ('name' in body) update.name = body.name?.trim();
-	if ('url' in body) update.url = body.url?.trim();
+	if ('url' in body && typeof body.url === 'string') {
+		const v = validateFeedUrl(body.url.trim());
+		if (!v.ok) {
+			return json({ error: v.reason }, { status: 400 });
+		}
+		update.url = v.url.toString();
+	}
 	if ('color' in body) update.color = body.color;
 	if ('userId' in body) update.userId = body.userId;
 	const [row] = await db
