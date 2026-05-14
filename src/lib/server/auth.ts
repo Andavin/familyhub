@@ -20,10 +20,20 @@ export function familyPassword(): string {
  */
 const MAX_FAILS = 10;
 const MAX_WINDOW_MS = 15 * 60_000;
+// Sweep expired buckets when the Map crosses this size. Keeps memory
+// bounded against an adversary trying to grow it forever by hitting
+// /api/login from a fresh IP each time.
+const SWEEP_AT_SIZE = 1024;
 type Bucket = { count: number; firstAt: number };
 const failedLogins = new Map<string, Bucket>();
 
 export type LoginRateLimit = { allowed: true } | { allowed: false; retryAfterSec: number };
+
+function sweepExpired(now: number): void {
+	for (const [ip, rec] of failedLogins) {
+		if (now - rec.firstAt > MAX_WINDOW_MS) failedLogins.delete(ip);
+	}
+}
 
 export function checkLoginRateLimit(ip: string, now = Date.now()): LoginRateLimit {
 	const rec = failedLogins.get(ip);
@@ -42,6 +52,7 @@ export function checkLoginRateLimit(ip: string, now = Date.now()): LoginRateLimi
 }
 
 export function recordLoginFailure(ip: string, now = Date.now()): void {
+	if (failedLogins.size >= SWEEP_AT_SIZE) sweepExpired(now);
 	const rec = failedLogins.get(ip);
 	if (!rec || now - rec.firstAt > MAX_WINDOW_MS) {
 		failedLogins.set(ip, { count: 1, firstAt: now });

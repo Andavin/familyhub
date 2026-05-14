@@ -17,7 +17,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	}>;
 	const update: Record<string, unknown> = {};
 	if ('name' in body) update.name = body.name?.trim();
-	if ('url' in body && typeof body.url === 'string') {
+	if ('url' in body) {
+		// Reject non-string url explicitly — silently skipping it would
+		// half-apply a PATCH that the client expected to update the URL.
+		if (typeof body.url !== 'string') {
+			return json({ error: 'url must be a string' }, { status: 400 });
+		}
 		const v = validateFeedUrl(body.url.trim());
 		if (!v.ok) {
 			return json({ error: v.reason }, { status: 400 });

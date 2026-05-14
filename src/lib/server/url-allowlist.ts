@@ -81,8 +81,12 @@ export function validateFeedUrl(raw: string): ValidationResult {
 		return { ok: false, reason: 'invalid URL' };
 	}
 	if (url.protocol === 'webcal:') {
+		// Normalize webcal:// → https:// by swapping the scheme on the
+		// already-parsed URL. Works even for atypical inputs like
+		// `webcal:example.com` (no `://`) since we rely on the parser
+		// rather than manual slicing.
 		try {
-			url = new URL('https://' + raw.slice(raw.indexOf('://') + 3));
+			url = new URL(url.toString().replace(/^webcal:/, 'https:'));
 		} catch {
 			return { ok: false, reason: 'invalid URL' };
 		}
@@ -103,17 +107,28 @@ export function validateFeedUrl(raw: string): ValidationResult {
 }
 
 /**
- * Resolve `hostname` and reject if the answer falls into a private
- * range. Used at fetch time to defeat DNS rebinding — a public name
- * that points at 192.168.x.y today won't be fetched.
+ * Resolve `hostname` and reject if ANY returned answer falls in a
+ * private range. We pass `{ all: true }` because a hostname can carry
+ * multiple A/AAAA records and `dns.lookup` would otherwise return
+ * whichever single record the OS picks first — we want to fail closed
+ * if any of them point inside the LAN.
  */
 export async function resolvePublicHost(hostname: string): Promise<DnsResult> {
 	try {
-		const { address, family } = await lookup(hostname);
-		const f: 4 | 6 = family === 6 ? 6 : 4;
-		const priv = f === 4 ? isPrivateV4(address) : isPrivateV6(address);
-		if (priv) return { ok: false, reason: `resolves to private address ${address}` };
-		return { ok: true, address, family: f };
+		const answers = await lookup(hostname, { all: true });
+		if (answers.length === 0) {
+			return { ok: false, reason: 'no DNS answers' };
+		}
+		for (const { address, family } of answers) {
+			const f: 4 | 6 = family === 6 ? 6 : 4;
+			const priv = f === 4 ? isPrivateV4(address) : isPrivateV6(address);
+			if (priv) return { ok: false, reason: `resolves to private address ${address}` };
+		}
+		// Use the first answer as the representative IP. (The fetch
+		// layer still re-resolves via the OS — see the comment on
+		// safeFetchIcs about the TOCTOU window.)
+		const { address, family } = answers[0];
+		return { ok: true, address, family: family === 6 ? 6 : 4 };
 	} catch (err) {
 		return { ok: false, reason: `DNS lookup failed: ${(err as Error).message}` };
 	}

@@ -18,6 +18,20 @@ describe('validateFeedUrl', () => {
 		if (r.ok) expect(r.url.protocol).toBe('https:');
 	});
 
+	it('rewrites webcal: (no double-slash) without producing a malformed URL', () => {
+		// `new URL('webcal:example.com/cal.ics')` parses but with the
+		// path-only form. We don't accept the result, but at minimum the
+		// validator must not throw or hand back a garbled URL.
+		const r = validateFeedUrl('webcal:example.com/cal.ics');
+		// Either it's rejected outright, or it normalized cleanly — both
+		// are acceptable. What's NOT acceptable is silently producing a
+		// URL with hostname starting with `xample.com` (the old slice bug).
+		if (r.ok) {
+			expect(r.url.protocol).toBe('https:');
+			expect(r.url.hostname).not.toMatch(/^x/);
+		}
+	});
+
 	it('rejects other protocols (file://, ftp://, gopher://, javascript:)', () => {
 		for (const u of [
 			'file:///etc/passwd',

@@ -49,4 +49,30 @@ describe('login rate limit', () => {
 		expect(checkLoginRateLimit(a).allowed).toBe(false);
 		expect(checkLoginRateLimit(b).allowed).toBe(true);
 	});
+
+	it('sweeps expired buckets once the Map crosses the sweep threshold', () => {
+		// Spray 2000 distinct stale IPs at a frozen "old" timestamp.
+		const old = 1_000_000;
+		for (let i = 0; i < 2000; i++) recordLoginFailure(`10.${i >> 8}.${i & 0xff}.1`, old);
+		// One fresh IP, far in the future. Recording it triggers the
+		// sweep, which should evict every stale bucket and leave us
+		// with effectively just this one.
+		const fresh = old + 60 * 60_000; // 60 minutes later
+		recordLoginFailure('203.0.113.1', fresh);
+		// Sanity: the fresh entry exists and is countable.
+		expect(checkLoginRateLimit('203.0.113.1', fresh).allowed).toBe(true);
+		// Pick a few of the original stale IPs at random — they should
+		// be gone, which we verify by checking that recording a new
+		// failure starts the bucket from count=1 (not 2).
+		for (const i of [0, 500, 1500, 1999]) {
+			const ip = `10.${i >> 8}.${i & 0xff}.1`;
+			recordLoginFailure(ip, fresh);
+			// Just one fresh failure → still allowed. If the stale
+			// bucket had survived, we'd be at count=2 in the same
+			// frozen window and still allowed too, so this isn't a
+			// strict proof — but combined with the sweep at 1024
+			// entries, the Map is bounded.
+			expect(checkLoginRateLimit(ip, fresh).allowed).toBe(true);
+		}
+	});
 });

@@ -251,13 +251,19 @@ export function expandEvents(
 /**
  * Fetch a feed URL with SSRF guardrails:
  *   1. URL goes through validateFeedUrl (protocol + literal-private check)
- *   2. Hostname is DNS-resolved at every hop and rejected if it lands in a
- *      private range — defeats DNS rebinding and "public host redirects to
- *      private host" attacks.
+ *   2. Hostname is DNS-resolved at every hop and rejected if ANY answer
+ *      lands in a private range — defeats most DNS rebinding and "public
+ *      host redirects to private host" attacks.
  *   3. Redirects are followed manually (max MAX_REDIRECTS) so each hop is
  *      re-validated.
  *   4. Each request has a hard timeout so a slow / hanging upstream can't
  *      pin the page-load.
+ *
+ * Known limitation: there is a TOCTOU window between our DNS check and
+ * `fetch`'s internal resolution. Pinning to a resolved IP requires a
+ * custom undici Agent with a `connect` override — out of scope for the
+ * kiosk-on-LAN deployment we target. Public-facing deployments fetching
+ * from attacker-controlled DNS should harden further.
  */
 async function safeFetchIcs(initial: string): Promise<Response | null> {
 	let current = initial;
