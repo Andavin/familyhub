@@ -1,17 +1,32 @@
 <script lang="ts">
 	import ConfirmDialog from './ConfirmDialog.svelte';
+	import TagPicker from './TagPicker.svelte';
 	import { buildRrule, describeRrule } from '$lib/recurrence-client';
-	import type { Task, User, List } from '$lib/server/schema';
+	import type { Task, User, List, Tag } from '$lib/server/schema';
 
 	type Props = {
 		open: boolean;
 		task: Task | null;
 		users: User[];
 		lists: List[];
+		tags: Tag[];
+		/** Tag IDs currently attached to the task being edited. */
+		initialTagIds: number[];
 		onclose: () => void;
 		onsaved: () => Promise<void> | void;
+		oncreatedTag?: (tag: Tag) => void;
 	};
-	let { open, task, users, lists, onclose, onsaved }: Props = $props();
+	let {
+		open,
+		task,
+		users,
+		lists,
+		tags,
+		initialTagIds,
+		onclose,
+		onsaved,
+		oncreatedTag
+	}: Props = $props();
 
 	let title = $state('');
 	let notes = $state('');
@@ -23,6 +38,7 @@
 	let flagged = $state(false);
 	let repeat = $state<'' | 'daily' | 'weekly' | 'monthly' | 'yearly'>('');
 	let interval = $state(1);
+	let tagIds = $state<number[]>([]);
 	let confirmDelete = $state(false);
 	let recurringDelete = $state(false);
 	let busy = $state(false);
@@ -54,6 +70,7 @@
 				repeat = '';
 				interval = 1;
 			}
+			tagIds = [...initialTagIds];
 		}
 	});
 
@@ -88,7 +105,8 @@
 				dueHasTime: due.hasTime,
 				priority,
 				flagged,
-				rrule
+				rrule,
+				tagIds
 			};
 			const res = await fetch(`/api/tasks/${task.id}`, {
 				method: 'PATCH',
@@ -277,6 +295,18 @@
 					<span class="text-sm">{flagged ? 'Flagged' : 'Not flagged'}</span>
 				</label>
 			</div>
+
+			<div class="row align-top">
+				<span class="label">Tags</span>
+				<div class="flex-1 min-w-0">
+					<TagPicker
+						{tags}
+						selectedIds={tagIds}
+						onchange={(ids) => (tagIds = ids)}
+						oncreated={(t) => oncreatedTag?.(t)}
+					/>
+				</div>
+			</div>
 		</div>
 
 		<div class="flex items-center gap-2 mt-5">
@@ -403,6 +433,9 @@
 		display: flex;
 		align-items: center;
 		gap: 0.6rem;
+	}
+	.row.align-top {
+		align-items: flex-start;
 	}
 	.label {
 		flex: 0 0 88px;

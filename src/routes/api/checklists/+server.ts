@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { checklists } from '$lib/server/schema';
 import type { ChecklistItem } from '$lib/server/schema';
+import { setChecklistTags } from '$lib/server/tags';
 
 export const GET: RequestHandler = async () => {
 	const rows = await db.select().from(checklists);
@@ -15,6 +16,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		description?: string;
 		emoji?: string;
 		items: ChecklistItem[];
+		defaultPriority?: number;
+		defaultDueTime?: string | null;
+		defaultTagIds?: number[];
 	};
 	if (!body.name || !Array.isArray(body.items)) {
 		return json({ error: 'name and items required' }, { status: 400 });
@@ -25,8 +29,15 @@ export const POST: RequestHandler = async ({ request }) => {
 			name: body.name,
 			description: body.description,
 			emoji: body.emoji ?? '📋',
-			items: body.items
+			items: body.items,
+			defaultPriority: typeof body.defaultPriority === 'number' ? body.defaultPriority : 0,
+			defaultDueTime: body.defaultDueTime ?? null
 		})
 		.returning();
+
+	if (Array.isArray(body.defaultTagIds)) {
+		await setChecklistTags(row.id, body.defaultTagIds);
+	}
+
 	return json(row, { status: 201 });
 };

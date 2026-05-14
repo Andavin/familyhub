@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { tasks, lists } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import { getOrCreateInbox, firstOwnedList, INBOX_SYSTEM } from '$lib/server/inbox';
+import { setTaskTags } from '$lib/server/tags';
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const id = Number(params.id);
@@ -19,6 +20,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		flagged: boolean;
 		priority: number;
 		sortOrder: number;
+		tagIds: number[];
 	}>;
 
 	const [existing] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
@@ -70,6 +72,11 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 	const [row] = await db.update(tasks).set(update).where(eq(tasks.id, id)).returning();
 	if (!row) throw error(404, 'not found');
+
+	if (Array.isArray(body.tagIds)) {
+		await setTaskTags(id, body.tagIds);
+	}
+
 	return json(row);
 };
 

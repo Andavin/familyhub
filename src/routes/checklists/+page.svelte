@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import ApplyChecklistOptionsModal from '$lib/components/ApplyChecklistOptionsModal.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import EmojiPicker from '$lib/components/EmojiPicker.svelte';
+	import TagPicker from '$lib/components/TagPicker.svelte';
 	import type { PageData } from './$types';
 	import type { Checklist, ChecklistItem } from '$lib/server/schema';
 
@@ -14,6 +16,9 @@
 	let description = $state('');
 	let emoji = $state('📋');
 	let items = $state<ChecklistItem[]>([]);
+	let defaultPriority = $state(0);
+	let defaultDueTime = $state('');
+	let defaultTagIds = $state<number[]>([]);
 
 	let confirmDelete = $state<Checklist | null>(null);
 	let toast = $state('');
@@ -37,6 +42,9 @@
 		description = '';
 		emoji = '📋';
 		items = [{ title: '', listId: defaultListId() }];
+		defaultPriority = 0;
+		defaultDueTime = '';
+		defaultTagIds = [];
 	}
 
 	function openEdit(t: Checklist) {
@@ -46,6 +54,9 @@
 		description = t.description ?? '';
 		emoji = t.emoji;
 		items = t.items.map((i) => ({ ...i }));
+		defaultPriority = t.defaultPriority;
+		defaultDueTime = t.defaultDueTime ?? '';
+		defaultTagIds = [...(data.checklistTags[t.id] ?? [])];
 	}
 
 	function close() {
@@ -62,7 +73,15 @@
 
 	async function save() {
 		const cleaned = items.filter((i) => i.title.trim().length > 0);
-		const body = { name, description, emoji, items: cleaned };
+		const body = {
+			name,
+			description,
+			emoji,
+			items: cleaned,
+			defaultPriority,
+			defaultDueTime: defaultDueTime || null,
+			defaultTagIds
+		};
 		const url = editing ? `/api/checklists/${editing.id}` : '/api/checklists';
 		const method = editing ? 'PATCH' : 'POST';
 		await fetch(url, {
@@ -81,16 +100,12 @@
 		await invalidateAll();
 	}
 
-	async function applyNow(t: Checklist) {
-		const res = await fetch(`/api/checklists/${t.id}/apply`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: '{}'
-		});
-		if (res.ok) {
-			const d = (await res.json()) as { inserted: unknown[] };
-			showToast(`Added ${d.inserted.length} ${d.inserted.length === 1 ? 'task' : 'tasks'}`);
-		}
+	let applyOptionsOpen = $state(false);
+	let checklistToApply = $state<Checklist | null>(null);
+
+	function openApply(t: Checklist) {
+		checklistToApply = t;
+		applyOptionsOpen = true;
 	}
 
 	const isEditing = $derived(creating || editing !== null);
@@ -133,7 +148,7 @@
 				</div>
 			</div>
 			<div class="flex gap-1.5">
-				<button class="btn ghost" onclick={() => applyNow(t)}>Apply</button>
+				<button class="btn ghost" onclick={() => openApply(t)}>Apply</button>
 				<button class="btn ghost" onclick={() => openEdit(t)}>Edit</button>
 				<button class="btn danger" onclick={() => (confirmDelete = t)}>Delete</button>
 			</div>
@@ -164,6 +179,60 @@
 				/>
 			</div>
 			<input bind:value={description} placeholder="Description (optional)" class="field" />
+		</div>
+
+		<h3 class="text-sm font-semibold mb-2">Defaults</h3>
+		<p class="text-xs text-[color:var(--color-muted)] mb-2">
+			Pre-filled in the apply dialog. You can still override them per-run.
+		</p>
+		<div class="rows mb-5">
+			<div class="row">
+				<span class="label">Time</span>
+				<input
+					type="time"
+					bind:value={defaultDueTime}
+					class="field"
+					aria-label="Default time"
+				/>
+				{#if defaultDueTime}
+					<button
+						class="text-sm text-[color:var(--color-muted)]"
+						aria-label="Clear time"
+						onclick={() => (defaultDueTime = '')}>✕</button
+					>
+				{/if}
+			</div>
+			<div class="row">
+				<span class="label">Priority</span>
+				<div class="seg" role="radiogroup" aria-label="Default priority">
+					{#each [
+						{ v: 0, label: 'None' },
+						{ v: 1, label: '!' },
+						{ v: 2, label: '!!' },
+						{ v: 3, label: '!!!' }
+					] as o (o.v)}
+						<button
+							type="button"
+							class:active={defaultPriority === o.v}
+							onclick={() => (defaultPriority = o.v)}
+							aria-pressed={defaultPriority === o.v}
+							data-testid="checklist-default-priority-{o.v}"
+						>
+							{o.label}
+						</button>
+					{/each}
+				</div>
+			</div>
+			<div class="row align-top">
+				<span class="label">Tags</span>
+				<div class="flex-1 min-w-0">
+					<TagPicker
+						tags={data.tags}
+						selectedIds={defaultTagIds}
+						onchange={(ids) => (defaultTagIds = ids)}
+					/>
+				</div>
+			</div>
 		</div>
 
 		<h3 class="text-sm font-semibold mb-2">Tasks</h3>
@@ -203,6 +272,19 @@
 	destructive
 	onconfirm={deleteChecklist}
 	oncancel={() => (confirmDelete = null)}
+/>
+
+<ApplyChecklistOptionsModal
+	open={applyOptionsOpen}
+	checklist={checklistToApply}
+	tags={data.tags}
+	defaultTagIds={checklistToApply ? (data.checklistTags[checklistToApply.id] ?? []) : []}
+	oncancel={() => (applyOptionsOpen = false)}
+	onapplied={async (n) => {
+		applyOptionsOpen = false;
+		showToast(`Added ${n} ${n === 1 ? 'task' : 'tasks'}`);
+		await invalidateAll();
+	}}
 />
 
 {#if toast}
@@ -276,6 +358,44 @@
 		display: flex;
 		gap: 0.4rem;
 		align-items: center;
+	}
+	.rows {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+	}
+	.row {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+	}
+	.row.align-top {
+		align-items: flex-start;
+	}
+	.label {
+		flex: 0 0 88px;
+		font-size: 0.85rem;
+		color: var(--color-muted);
+		font-weight: 600;
+	}
+	.seg {
+		display: flex;
+		gap: 0.25rem;
+		background: var(--color-canvas);
+		padding: 0.2rem;
+		border-radius: 0.6rem;
+	}
+	.seg button {
+		padding: 0.3rem 0.7rem;
+		border-radius: 0.4rem;
+		font-size: 0.85rem;
+		color: var(--color-ink-2);
+	}
+	.seg button.active {
+		background: var(--color-card);
+		color: var(--color-list-orange);
+		font-weight: 700;
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 	}
 	.backdrop {
 		position: fixed;

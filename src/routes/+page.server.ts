@@ -4,6 +4,7 @@ import { users, lists, tasks, checklists, type Task } from '$lib/server/schema';
 import { asc, isNull, eq } from 'drizzle-orm';
 import { getOrCreateInbox } from '$lib/server/inbox';
 import { loadDoneEntries } from '$lib/server/done';
+import { listTags, loadTaskTagMap, loadChecklistTagMap } from '$lib/server/tags';
 import { isOverdue } from '$lib/format';
 import { nextOccurrenceAfter } from '$lib/server/recurrence';
 
@@ -13,7 +14,7 @@ export const load: PageServerLoad = async () => {
 	// Show completed within the last 30 days; older completes drop off automatically.
 	const cutoff = new Date(Date.now() - 30 * 86_400_000);
 
-	const [u, l, openTasks, doneEntries, tmpl] = await Promise.all([
+	const [u, l, openTasks, doneEntries, tmpl, tags, taskTags, checklistTags] = await Promise.all([
 		db.select().from(users).orderBy(asc(users.displayOrder)),
 		db
 			.select()
@@ -26,7 +27,10 @@ export const load: PageServerLoad = async () => {
 			.where(isNull(tasks.completedAt))
 			.orderBy(asc(tasks.sortOrder), asc(tasks.createdAt)),
 		loadDoneEntries(cutoff),
-		db.select().from(checklists)
+		db.select().from(checklists),
+		listTags(),
+		loadTaskTagMap(),
+		loadChecklistTagMap()
 	]);
 
 	// For overdue recurring tasks, project the next-after-now occurrence so
@@ -45,5 +49,15 @@ export const load: PageServerLoad = async () => {
 		projectedRecurring.push({ ...t, dueAt: next });
 	}
 
-	return { users: u, lists: l, openTasks, projectedRecurring, doneEntries, checklists: tmpl };
+	return {
+		users: u,
+		lists: l,
+		openTasks,
+		projectedRecurring,
+		doneEntries,
+		checklists: tmpl,
+		tags,
+		taskTags,
+		checklistTags
+	};
 };

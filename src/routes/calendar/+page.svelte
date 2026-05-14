@@ -482,6 +482,8 @@
 	task={taskBeingEdited}
 	users={data.users}
 	lists={data.lists}
+	tags={data.tags}
+	initialTagIds={taskBeingEdited ? (data.taskTags[taskBeingEdited.id] ?? []) : []}
 	onclose={() => (taskModalOpen = false)}
 	onsaved={async () => {
 		await invalidateAll();
