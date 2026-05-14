@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { calendarFeeds } from '$lib/server/schema';
 import { asc } from 'drizzle-orm';
+import { validateFeedUrl } from '$lib/server/url-allowlist';
 
 export const GET: RequestHandler = async () => {
 	const rows = await db.select().from(calendarFeeds).orderBy(asc(calendarFeeds.id));
@@ -19,11 +20,15 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (!body.name?.trim() || !body.url?.trim()) {
 		return json({ error: 'name and url required' }, { status: 400 });
 	}
+	const v = validateFeedUrl(body.url.trim());
+	if (!v.ok) {
+		return json({ error: v.reason }, { status: 400 });
+	}
 	const [row] = await db
 		.insert(calendarFeeds)
 		.values({
 			name: body.name.trim(),
-			url: body.url.trim(),
+			url: v.url.toString(),
 			color: body.color ?? 'blue',
 			userId: body.userId ?? null
 		})

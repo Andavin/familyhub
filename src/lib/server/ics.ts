@@ -14,8 +14,12 @@
  */
 
 import rrulePkg from 'rrule';
+import { resolvePublicHost, validateFeedUrl } from './url-allowlist';
 const { RRule } = rrulePkg;
 type RRuleOptions = rrulePkg.Options;
+
+const FETCH_TIMEOUT_MS = 8000;
+const MAX_REDIRECTS = 5;
 
 export type CalEvent = {
 	uid: string;
@@ -244,6 +248,64 @@ export function expandEvents(
 	return out;
 }
 
+/**
+ * Fetch a feed URL with SSRF guardrails:
+ *   1. URL goes through validateFeedUrl (protocol + literal-private check)
+ *   2. Hostname is DNS-resolved at every hop and rejected if ANY answer
+ *      lands in a private range — defeats most DNS rebinding and "public
+ *      host redirects to private host" attacks.
+ *   3. Redirects are followed manually (max MAX_REDIRECTS) so each hop is
+ *      re-validated.
+ *   4. Each request has a hard timeout so a slow / hanging upstream can't
+ *      pin the page-load.
+ *
+ * Known limitation: there is a TOCTOU window between our DNS check and
+ * `fetch`'s internal resolution. Pinning to a resolved IP requires a
+ * custom undici Agent with a `connect` override — out of scope for the
+ * kiosk-on-LAN deployment we target. Public-facing deployments fetching
+ * from attacker-controlled DNS should harden further.
+ */
+async function safeFetchIcs(initial: string): Promise<Response | null> {
+	let current = initial;
+	for (let hop = 0; hop < MAX_REDIRECTS; hop++) {
+		const v = validateFeedUrl(current);
+		if (!v.ok) {
+			console.warn(`[ics] blocked ${current}: ${v.reason}`);
+			return null;
+		}
+		const dns = await resolvePublicHost(v.url.hostname);
+		if (!dns.ok) {
+			console.warn(`[ics] blocked ${v.url.hostname}: ${dns.reason}`);
+			return null;
+		}
+		let res: Response;
+		try {
+			res = await fetch(v.url.toString(), {
+				headers: { 'user-agent': 'family-hub/1.0' },
+				redirect: 'manual',
+				signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+			});
+		} catch (err) {
+			console.error('[ics] fetch failed:', v.url.toString(), err);
+			return null;
+		}
+		if (res.status >= 300 && res.status < 400) {
+			const loc = res.headers.get('location');
+			if (!loc) return res;
+			try {
+				current = new URL(loc, v.url).toString();
+			} catch {
+				console.warn(`[ics] invalid redirect target from ${v.url}: ${loc}`);
+				return null;
+			}
+			continue;
+		}
+		return res;
+	}
+	console.warn(`[ics] too many redirects starting from ${initial}`);
+	return null;
+}
+
 export async function fetchIcsFeed(
 	url: string,
 	feedName: string,
@@ -253,22 +315,19 @@ export async function fetchIcsFeed(
 	const hit = cache.get(key);
 	if (hit && Date.now() - hit.at < TTL_MS) return hit.events;
 
-	const httpUrl = url.replace(/^webcal:\/\//i, 'https://');
+	const res = await safeFetchIcs(url);
+	if (!res) return hit?.events ?? [];
+	if (!res.ok) {
+		console.error(`[ics] ${res.status} ${url}`);
+		return hit?.events ?? [];
+	}
 	try {
-		const res = await fetch(httpUrl, {
-			headers: { 'user-agent': 'family-hub/1.0' },
-			redirect: 'follow'
-		});
-		if (!res.ok) {
-			console.error(`[ics] ${res.status} ${httpUrl}`);
-			return hit?.events ?? [];
-		}
 		const text = await res.text();
 		const events = parseIcs(text, feedName, color);
 		cache.set(key, { at: Date.now(), events });
 		return events;
 	} catch (err) {
-		console.error('[ics] fetch failed:', httpUrl, err);
+		console.error('[ics] parse failed:', url, err);
 		return hit?.events ?? [];
 	}
 }
