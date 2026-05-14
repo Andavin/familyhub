@@ -1,5 +1,12 @@
 import { sql } from 'drizzle-orm';
-import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+	sqliteTable,
+	text,
+	integer,
+	index,
+	uniqueIndex,
+	primaryKey
+} from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('users', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
@@ -116,10 +123,34 @@ export const checklists = sqliteTable('checklists', {
 	description: text('description'),
 	emoji: text('emoji').notNull().default('📋'),
 	items: text('items', { mode: 'json' }).$type<ChecklistItem[]>().notNull(),
+	// Defaults applied when the checklist is invoked. The apply-options
+	// modal pre-fills from these; the user can still override per-run.
+	defaultPriority: integer('default_priority').notNull().default(0),
+	defaultDueTime: text('default_due_time'),
 	createdAt: integer('created_at', { mode: 'timestamp_ms' })
 		.notNull()
 		.default(sql`(unixepoch() * 1000)`)
 });
+
+/**
+ * Default tags attached to a checklist — every task spawned by an apply
+ * inherits these (in addition to whatever the user picks at apply time).
+ */
+export const checklistTags = sqliteTable(
+	'checklist_tags',
+	{
+		checklistId: integer('checklist_id')
+			.notNull()
+			.references(() => checklists.id, { onDelete: 'cascade' }),
+		tagId: integer('tag_id')
+			.notNull()
+			.references(() => tags.id, { onDelete: 'cascade' })
+	},
+	(t) => ({
+		pk: primaryKey({ columns: [t.checklistId, t.tagId] }),
+		tagIdx: index('checklist_tags_tag_idx').on(t.tagId)
+	})
+);
 
 export const groceryItems = sqliteTable(
 	'grocery_items',
@@ -175,9 +206,47 @@ export const sessions = sqliteTable(
 	})
 );
 
+/**
+ * Apple-Reminders-style tags. Tags are global (not list-scoped) and a
+ * task can carry many tags. Names are stored lower-case so `#cleaning`
+ * and `#Cleaning` collapse to one tag.
+ */
+export const tags = sqliteTable(
+	'tags',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		name: text('name').notNull(),
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`)
+	},
+	(t) => ({
+		nameIdx: uniqueIndex('tags_name_idx').on(t.name)
+	})
+);
+
+export const taskTags = sqliteTable(
+	'task_tags',
+	{
+		taskId: integer('task_id')
+			.notNull()
+			.references(() => tasks.id, { onDelete: 'cascade' }),
+		tagId: integer('tag_id')
+			.notNull()
+			.references(() => tags.id, { onDelete: 'cascade' })
+	},
+	(t) => ({
+		pk: primaryKey({ columns: [t.taskId, t.tagId] }),
+		tagIdx: index('task_tags_tag_idx').on(t.tagId)
+	})
+);
+
 export type User = typeof users.$inferSelect;
 export type List = typeof lists.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
 export type Checklist = typeof checklists.$inferSelect;
+export type ChecklistTag = typeof checklistTags.$inferSelect;
 export type GroceryItem = typeof groceryItems.$inferSelect;
+export type Tag = typeof tags.$inferSelect;
+export type TaskTag = typeof taskTags.$inferSelect;

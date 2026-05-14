@@ -45,6 +45,9 @@ test.describe('tasks', () => {
 		const button = page.getByTestId(/^apply-checklist-/).first();
 		await button.click();
 
+		// The picker now opens an options modal — confirm without changing anything.
+		await page.getByTestId('apply-opts-confirm').click();
+
 		await expect(page.getByText(/Added \d+ tasks?/)).toBeVisible({ timeout: 5000 });
 
 		await expect(

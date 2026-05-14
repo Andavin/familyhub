@@ -5,28 +5,9 @@
 		open: boolean;
 		checklists: Checklist[];
 		onclose: () => void;
-		onapplied: (insertedCount: number) => void;
+		onpick: (checklist: Checklist) => void;
 	};
-	let { open, checklists, onclose, onapplied }: Props = $props();
-	let busyId = $state<number | null>(null);
-
-	async function apply(t: Checklist) {
-		busyId = t.id;
-		try {
-			const res = await fetch(`/api/checklists/${t.id}/apply`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({})
-			});
-			if (res.ok) {
-				const data = (await res.json()) as { inserted: unknown[] };
-				onapplied(data.inserted.length);
-				onclose();
-			}
-		} finally {
-			busyId = null;
-		}
-	}
+	let { open, checklists, onclose, onpick }: Props = $props();
 </script>
 
 {#if open}
@@ -43,8 +24,7 @@
 			{#each checklists as t (t.id)}
 				<button
 					class="checklist-card"
-					disabled={busyId !== null}
-					onclick={() => apply(t)}
+					onclick={() => onpick(t)}
 					data-testid="apply-checklist-{t.id}"
 				>
 					<span class="text-2xl">{t.emoji}</span>
@@ -59,11 +39,7 @@
 							{t.items.length} {t.items.length === 1 ? 'task' : 'tasks'}
 						</div>
 					</div>
-					{#if busyId === t.id}
-						<span class="text-sm text-[color:var(--color-list-blue)]">Adding…</span>
-					{:else}
-						<span class="text-[color:var(--color-list-blue)] font-semibold">Apply</span>
-					{/if}
+					<span class="text-[color:var(--color-list-blue)] font-semibold">Apply</span>
 				</button>
 			{:else}
 				<p class="text-sm text-[color:var(--color-muted)]">No checklists yet — create one below.</p>

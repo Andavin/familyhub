@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Checkbox from './Checkbox.svelte';
 	import { formatDueLabel, isOverdue } from '$lib/format';
-	import type { Task } from '$lib/server/schema';
+	import type { Task, Tag } from '$lib/server/schema';
 
 	type Props = {
 		task: Task;
@@ -12,8 +12,9 @@
 		// True for orphan completion rows (parent task deleted) — disables
 		// both the checkbox and the title-tap handler.
 		readOnly?: boolean;
+		tags?: Tag[];
 	};
-	let { task, color, onComplete, onopen, readOnly = false }: Props = $props();
+	let { task, color, onComplete, onopen, readOnly = false, tags = [] }: Props = $props();
 
 	const completed = $derived(!!task.completedAt);
 	const due = $derived(task.dueAt ? new Date(task.dueAt) : null);
@@ -67,6 +68,13 @@
 				{#if task.rrule}
 					<span class="text-[11px] text-[color:var(--color-muted)]" title={task.rrule}>↻</span>
 				{/if}
+			</div>
+		{/if}
+		{#if tags.length > 0}
+			<div class="tag-row">
+				{#each tags as t (t.id)}
+					<span class="tag-chip">#{t.name}</span>
+				{/each}
 			</div>
 		{/if}
 	{/snippet}
@@ -133,5 +141,20 @@
 	.overdue-text {
 		color: var(--color-list-red) !important;
 		font-weight: 600;
+	}
+	.tag-row {
+		margin-top: 0.25rem;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+	}
+	.tag-chip {
+		padding: 1px 7px;
+		border-radius: 999px;
+		background: var(--color-canvas-2);
+		color: var(--color-muted);
+		font-size: 0.7rem;
+		font-weight: 500;
+		letter-spacing: 0.01em;
 	}
 </style>

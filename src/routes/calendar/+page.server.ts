@@ -5,6 +5,7 @@ import { and, asc, isNotNull, isNull } from 'drizzle-orm';
 import { fetchIcsFeed, expandEvents, type CalEvent } from '$lib/server/ics';
 import { futureOccurrences } from '$lib/server/recurrence';
 import { loadDoneEntries } from '$lib/server/done';
+import { listTags, loadTaskTagMap } from '$lib/server/tags';
 
 export type GhostOccurrence = {
 	taskId: number;
@@ -25,7 +26,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	const gridEnd = new Date(end);
 	gridEnd.setDate(end.getDate() + (6 - end.getDay()));
 
-	const [u, l, activeDueTasks, doneEntries, feeds] = await Promise.all([
+	const [u, l, activeDueTasks, doneEntries, feeds, tags, taskTags] = await Promise.all([
 		db.select().from(users).orderBy(asc(users.displayOrder)),
 		db.select().from(lists),
 		db
@@ -34,7 +35,9 @@ export const load: PageServerLoad = async ({ url }) => {
 			.where(and(isNotNull(tasks.dueAt), isNull(tasks.completedAt)))
 			.orderBy(asc(tasks.dueAt)),
 		loadDoneEntries(gridStart),
-		db.select().from(calendarFeeds).orderBy(asc(calendarFeeds.id))
+		db.select().from(calendarFeeds).orderBy(asc(calendarFeeds.id)),
+		listTags(),
+		loadTaskTagMap()
 	]);
 
 	// Fetch every feed in parallel, then expand recurring events into per-
@@ -78,6 +81,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		ghosts,
 		events,
 		feeds,
+		tags,
+		taskTags,
 		month: { year: ref.getFullYear(), month: ref.getMonth() }
 	};
 };
