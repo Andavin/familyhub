@@ -11,8 +11,8 @@ async function main() {
 	const insertedUsers = await db
 		.insert(users)
 		.values([
-			{ name: 'Mark', color: 'blue', emoji: '🧔', displayOrder: 0 },
-			{ name: 'Partner', color: 'pink', emoji: '💁‍♀️', displayOrder: 1 },
+			{ name: 'Alex', color: 'blue', emoji: '🙂', displayOrder: 0 },
+			{ name: 'Partner', color: 'pink', emoji: '💁', displayOrder: 1 },
 			{ name: 'Kid', color: 'green', emoji: '🧒', displayOrder: 2 }
 		])
 		.returning();
@@ -45,7 +45,7 @@ async function main() {
 		displayOrder: 200
 	});
 
-	const markList = ownedLists.Mark;
+	const adultList = ownedLists.Alex;
 	const partnerList = ownedLists.Partner;
 
 	await db.insert(checklists).values([
@@ -54,14 +54,14 @@ async function main() {
 			emoji: '✈️',
 			description: 'Everything we always need to do before leaving',
 			items: [
-				{ title: 'Pack chargers', listId: markList },
+				{ title: 'Pack chargers', listId: adultList },
 				{ title: 'Pack toiletries', listId: partnerList },
-				{ title: 'Empty trash', listId: markList },
-				{ title: 'Set thermostat to away', listId: markList },
+				{ title: 'Empty trash', listId: adultList },
+				{ title: 'Set thermostat to away', listId: adultList },
 				{ title: 'Water plants', listId: partnerList },
-				{ title: 'Lock back door', listId: markList },
+				{ title: 'Lock back door', listId: adultList },
 				{ title: 'Check passports', listId: familyList.id },
-				{ title: 'Confirm flights', listId: markList },
+				{ title: 'Confirm flights', listId: adultList },
 				{ title: 'Stop mail hold', listId: partnerList }
 			]
 		},
@@ -70,10 +70,10 @@ async function main() {
 			emoji: '🧹',
 			description: 'Weekly cleaning rotation',
 			items: [
-				{ title: 'Vacuum living room', listId: markList },
+				{ title: 'Vacuum living room', listId: adultList },
 				{ title: 'Mop kitchen', listId: partnerList },
 				{ title: 'Wash sheets', listId: familyList.id },
-				{ title: 'Take out trash', listId: markList },
+				{ title: 'Take out trash', listId: adultList },
 				{ title: 'Clean bathroom', listId: partnerList }
 			]
 		}

@@ -8,17 +8,17 @@ test.describe('people', () => {
 	});
 
 	test('lists seeded people', async ({ page }) => {
-		await expect(page.getByText('Mark', { exact: true })).toBeVisible();
+		await expect(page.getByText('Alex', { exact: true })).toBeVisible();
 		await expect(page.getByText('Partner', { exact: true })).toBeVisible();
 		await expect(page.getByText('Kid', { exact: true })).toBeVisible();
 	});
 
 	test('add a calendar link to a person', async ({ page }) => {
-		// Open the first existing user (Mark)
+		// Open the first existing user (Alex)
 		await page.getByTestId('user-card-1').click();
 
 		// Calendar Links section is visible only when editing
-		await page.getByTestId('feed-name-input').fill('Mark Personal');
+		await page.getByTestId('feed-name-input').fill('Alex Personal');
 		await page.getByTestId('feed-url-input').fill('https://example.com/cal.ics');
 		const addResp = page.waitForResponse((r) =>
 			r.url().endsWith('/api/calendar-feeds') && r.request().method() === 'POST'
@@ -31,7 +31,7 @@ test.describe('people', () => {
 			return await fetch('/api/calendar-feeds').then((r) => r.json());
 		});
 		const found = (feeds as { name: string; url: string }[]).find(
-			(f) => f.name === 'Mark Personal'
+			(f) => f.name === 'Alex Personal'
 		);
 		expect(found).toBeTruthy();
 		expect(found!.url).toBe('https://example.com/cal.ics');

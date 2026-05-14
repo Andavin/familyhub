@@ -27,8 +27,8 @@ END:VEVENT
 BEGIN:VEVENT
 UID:tz-event
 SUMMARY:Breakfast
-DTSTART;TZID=America/Denver:20260509T040000
-DTEND;TZID=America/Denver:20260509T050000
+DTSTART;TZID=America/New_York:20260509T040000
+DTEND;TZID=America/New_York:20260509T050000
 END:VEVENT
 END:VCALENDAR`;
 
@@ -75,16 +75,16 @@ describe('parseIcs', () => {
 		const events = parseIcs(SAMPLE, 'Test', 'blue');
 		const e = events.find((x) => x.uid === 'tz-event');
 		expect(e).toBeTruthy();
-		// 4 AM Denver in May 2026 = MDT (UTC-6) → 10 AM UTC
-		expect(e!.start.toISOString()).toBe('2026-05-09T10:00:00.000Z');
-		expect(e!.end.toISOString()).toBe('2026-05-09T11:00:00.000Z');
+		// 4 AM New York in May 2026 = EDT (UTC-4) → 8 AM UTC
+		expect(e!.start.toISOString()).toBe('2026-05-09T08:00:00.000Z');
+		expect(e!.end.toISOString()).toBe('2026-05-09T09:00:00.000Z');
 	});
 
 	it('attaches feedName + color to every event', () => {
-		const events = parseIcs(SAMPLE, 'Mark — Personal', 'pink');
+		const events = parseIcs(SAMPLE, 'Personal', 'pink');
 		expect(events.length).toBeGreaterThan(0);
 		for (const e of events) {
-			expect(e.feedName).toBe('Mark — Personal');
+			expect(e.feedName).toBe('Personal');
 			expect(e.color).toBe('pink');
 		}
 	});
@@ -111,10 +111,10 @@ END:VEVENT`;
 		const ics = `BEGIN:VEVENT
 UID:quoted
 SUMMARY:Quoted tz
-DTSTART;TZID="America/Denver":20260509T040000
+DTSTART;TZID="America/New_York":20260509T040000
 END:VEVENT`;
 		const events = parseIcs(ics, 'Test', 'blue');
-		expect(events[0].start.toISOString()).toBe('2026-05-09T10:00:00.000Z');
+		expect(events[0].start.toISOString()).toBe('2026-05-09T08:00:00.000Z');
 	});
 
 	it('captures RRULE and EXDATE on a recurring event', () => {

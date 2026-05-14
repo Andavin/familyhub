@@ -79,7 +79,7 @@
 			<div class="text-xs uppercase tracking-wide text-[color:var(--color-muted)] mb-1">Name</div>
 			<input
 				bind:value={name}
-				placeholder="e.g. Mark, Errands, Weekend"
+				placeholder="e.g. Work, Errands, Weekend"
 				class="field w-full"
 				data-testid="list-name-input"
 			/>
