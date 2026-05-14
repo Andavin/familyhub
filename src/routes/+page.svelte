@@ -6,6 +6,7 @@
 	import CompletedByModal from '$lib/components/CompletedByModal.svelte';
 	import ListEditModal from '$lib/components/ListEditModal.svelte';
 	import TaskDetailModal from '$lib/components/TaskDetailModal.svelte';
+	import { CompletionFlow } from '$lib/completion-flow.svelte';
 	import { colorVar } from '$lib/colors';
 	import { isOverdue } from '$lib/format';
 	import type { PageData } from './$types';
@@ -70,10 +71,9 @@
 	let taskBeingEdited = $state<Task | null>(null);
 	let expandedDone = $state<Record<number, boolean>>({});
 	let expandedScheduled = $state<Record<number, boolean>>({});
-	// When the user checks off an unassigned task we ask who completed it
-	// before posting. Holding the pending task here is what keeps the
-	// modal open and remembers what to post when they pick.
-	let pendingCompletion = $state<Task | null>(null);
+	// Shared flow handles the "ask who completed an unassigned task" UX +
+	// the actual POST. See lib/completion-flow.svelte.ts.
+	const completion = new CompletionFlow();
 
 	let toast = $state('');
 	let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -81,29 +81,6 @@
 		toast = msg;
 		if (toastTimer) clearTimeout(toastTimer);
 		toastTimer = setTimeout(() => (toast = ''), 2400);
-	}
-
-	async function postComplete(t: Task, done: boolean, completedById: number | null) {
-		await fetch(`/api/tasks/${t.id}/complete`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				action: done ? 'complete' : 'uncomplete',
-				completedById
-			})
-		});
-		await invalidateAll();
-	}
-
-	async function complete(t: Task, done: boolean) {
-		// Assigned tasks → the assignee is the implicit "did it" answer.
-		// Unassigned + completing → ask who, since we have no default. Uncompleting
-		// always passes through (the server clears completedBy regardless).
-		if (done && t.assigneeId === null) {
-			pendingCompletion = t;
-			return;
-		}
-		await postComplete(t, done, t.assigneeId);
 	}
 
 	async function addTask(col: Column, title: string) {
@@ -183,7 +160,7 @@
 					<TaskRow
 						{task}
 						color={col.list.color}
-						onComplete={complete}
+						onComplete={completion.start}
 						onopen={openTask}
 					/>
 				{/each}
@@ -211,7 +188,7 @@
 									<TaskRow
 										{task}
 										color={col.list.color}
-										onComplete={complete}
+										onComplete={completion.start}
 										onopen={openTask}
 									/>
 								{/each}
@@ -238,7 +215,7 @@
 									<TaskRow
 										task={entry.task}
 										color={col.list.color}
-										onComplete={complete}
+										onComplete={completion.start}
 										onopen={openTask}
 										readOnly={!!entry.orphan}
 									/>
@@ -289,15 +266,11 @@
 />
 
 <CompletedByModal
-	open={pendingCompletion !== null}
+	open={completion.pending !== null}
 	users={data.users}
-	taskTitle={pendingCompletion?.title ?? ''}
-	onpick={async (userId) => {
-		const t = pendingCompletion;
-		pendingCompletion = null;
-		if (t) await postComplete(t, true, userId);
-	}}
-	oncancel={() => (pendingCompletion = null)}
+	taskTitle={completion.pending?.title ?? ''}
+	onpick={completion.pickCompletedBy}
+	oncancel={completion.cancelPicker}
 />
 
 {#if toast}

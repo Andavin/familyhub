@@ -10,13 +10,28 @@ export async function login(page: Page) {
 }
 
 /**
- * Click a task row's complete checkbox. If the task is unassigned, the
- * "Who completed this?" modal will pop — silence it by picking the first
- * user. Tests that don't care about who completed it should use this
- * instead of clicking the checkbox directly.
+ * Click a task row's complete checkbox.
+ *
+ * By default, if the task is unassigned and the "Who completed this?"
+ * modal opens, the helper auto-selects the first user. Tests that don't
+ * care *who* completed the task can stay terse this way.
+ *
+ * Pass `{ autoSelectCompletedBy: false }` when the test is actually
+ * exercising the modal (asserting it appears, who it lists, cancel /
+ * Escape behavior, or which user it records).
+ *
+ * Note on the role name: the aria-label on the checkbox is literally
+ * `Mark "<title>" complete` — "Mark" is the imperative verb, not the
+ * name of the seeded user (who is "Alex").
  */
-export async function completeRow(page: Page, row: Locator) {
+export async function completeRow(
+	page: Page,
+	row: Locator,
+	options: { autoSelectCompletedBy?: boolean } = {}
+) {
+	const { autoSelectCompletedBy = true } = options;
 	await row.getByRole('button', { name: /Mark .* complete/i }).click();
+	if (!autoSelectCompletedBy) return;
 	const firstChoice = page.locator('[data-testid^="completed-by-"]').first();
 	if (await firstChoice.isVisible({ timeout: 300 }).catch(() => false)) {
 		await firstChoice.click();

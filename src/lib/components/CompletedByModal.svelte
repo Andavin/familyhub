@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { colorVar } from '$lib/colors';
 	import type { User } from '$lib/server/schema';
+	import { tick } from 'svelte';
 
 	type Props = {
 		open: boolean;
@@ -11,11 +12,47 @@
 		oncancel: () => void;
 	};
 	let { open, users, taskTitle, onpick, oncancel }: Props = $props();
+
+	let modalEl = $state<HTMLDivElement | undefined>();
+	let previouslyFocused: HTMLElement | null = null;
+
+	// Move focus into the modal on open and restore it on close. Stash
+	// the previously-focused element so keyboard users land back where
+	// they were after the modal dismisses.
+	$effect(() => {
+		if (open) {
+			previouslyFocused = (document.activeElement as HTMLElement) ?? null;
+			tick().then(() => {
+				const first = modalEl?.querySelector<HTMLElement>(
+					'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+				);
+				first?.focus();
+			});
+		} else if (previouslyFocused) {
+			previouslyFocused.focus();
+			previouslyFocused = null;
+		}
+	});
+
+	function onkeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			oncancel();
+		}
+	}
 </script>
 
 {#if open}
 	<div class="backdrop" role="presentation" onclick={oncancel}></div>
-	<div class="modal" role="dialog" aria-modal="true" aria-labelledby="completed-by-title">
+	<div
+		class="modal"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="completed-by-title"
+		tabindex="-1"
+		bind:this={modalEl}
+		{onkeydown}
+	>
 		<header class="mb-3">
 			<h2 id="completed-by-title" class="text-lg font-display font-bold">Who completed this?</h2>
 			<p class="text-sm text-[color:var(--color-muted)] truncate">{taskTitle}</p>
