@@ -311,6 +311,10 @@
 		overflow-x: auto;
 		overflow-y: hidden;
 		padding: 0.5rem 1rem 2rem;
+		/* Make scroll-snap respect the container's left padding so the
+		   first column doesn't slam against the viewport edge when you
+		   bounce back to the start. */
+		scroll-padding-left: 1rem;
 		flex: 1;
 		align-items: stretch;
 	}
@@ -318,6 +322,7 @@
 		.board {
 			padding-left: 2rem;
 			padding-right: 2rem;
+			scroll-padding-left: 2rem;
 		}
 	}
 	.column {
