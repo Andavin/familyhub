@@ -7,7 +7,14 @@ const SESSION_TTL_DAYS = 60;
 export const SESSION_COOKIE = 'fh_session';
 
 export function familyPassword(): string {
-	return process.env.FAMILY_PASSWORD ?? 'letmein';
+	const pw = process.env.FAMILY_PASSWORD;
+	if (!pw) {
+		throw new Error(
+			'FAMILY_PASSWORD environment variable must be set. ' +
+				'See .env.example for the expected shape.'
+		);
+	}
+	return pw;
 }
 
 /**

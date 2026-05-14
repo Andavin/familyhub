@@ -15,21 +15,21 @@ function mkList(id: number, ownerId: number | null, name = `list-${id}`): List {
 }
 
 describe('resolveChecklist', () => {
-	const marksList = mkList(10, 1, "Mark's Tasks");
+	const adultList = mkList(10, 1, "Alex's Tasks");
 	const partnersList = mkList(20, 2, "Partner's Tasks");
 	const familyList = mkList(30, null, 'Family');
 	const inboxId = 99;
 	const listsById = new Map<number, List>([
-		[marksList.id, marksList],
+		[adultList.id, adultList],
 		[partnersList.id, partnersList],
 		[familyList.id, familyList]
 	]);
 
 	it("routes to a person's list and inherits the owner as assignee", () => {
-		const items: ChecklistItem[] = [{ title: 'Pack chargers', listId: marksList.id }];
+		const items: ChecklistItem[] = [{ title: 'Pack chargers', listId: adultList.id }];
 		const seeds = resolveChecklist(items, listsById, inboxId);
 		expect(seeds).toHaveLength(1);
-		expect(seeds[0].listId).toBe(marksList.id);
+		expect(seeds[0].listId).toBe(adultList.id);
 		expect(seeds[0].assigneeId).toBe(1);
 	});
 
@@ -50,8 +50,8 @@ describe('resolveChecklist', () => {
 	it('applies offsetDays to dueAt relative to startDate', () => {
 		const start = new Date('2026-05-06T00:00:00Z');
 		const items: ChecklistItem[] = [
-			{ title: 'A', listId: marksList.id, offsetDays: 0 },
-			{ title: 'B', listId: marksList.id, offsetDays: 3 }
+			{ title: 'A', listId: adultList.id, offsetDays: 0 },
+			{ title: 'B', listId: adultList.id, offsetDays: 3 }
 		];
 		const seeds = resolveChecklist(items, listsById, inboxId, start);
 		expect(seeds[0].dueAt?.getTime()).toBe(start.getTime());
@@ -59,14 +59,14 @@ describe('resolveChecklist', () => {
 	});
 
 	it('omits dueAt when offsetDays not provided', () => {
-		const items: ChecklistItem[] = [{ title: 'A', listId: marksList.id }];
+		const items: ChecklistItem[] = [{ title: 'A', listId: adultList.id }];
 		const seeds = resolveChecklist(items, listsById, inboxId);
 		expect(seeds[0].dueAt).toBeNull();
 	});
 
 	it('passes through notes', () => {
 		const items: ChecklistItem[] = [
-			{ title: 'A', listId: marksList.id, notes: 'Remember the dog' }
+			{ title: 'A', listId: adultList.id, notes: 'Remember the dog' }
 		];
 		const seeds = resolveChecklist(items, listsById, inboxId);
 		expect(seeds[0].notes).toBe('Remember the dog');
@@ -75,7 +75,7 @@ describe('resolveChecklist', () => {
 	it('produces N seeds for N items', () => {
 		const items: ChecklistItem[] = Array.from({ length: 15 }, () => ({
 			title: 'x',
-			listId: marksList.id
+			listId: adultList.id
 		}));
 		const seeds = resolveChecklist(items, listsById, inboxId);
 		expect(seeds).toHaveLength(15);

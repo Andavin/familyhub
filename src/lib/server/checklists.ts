@@ -15,8 +15,8 @@ export type AppliedTaskSeed = {
  * Resolve a checklist's items into concrete task seeds.
  *
  * Each item names a target list. The task lands in that list, and inherits
- * the list's `ownerId` as its assignee (so adding to "Mark's Tasks"
- * automatically sets Mark as the assignee). Items pointing at the
+ * the list's `ownerId` as its assignee (so adding to a person's list
+ * automatically sets them as the assignee). Items pointing at the
  * Unassigned inbox or any other shared list get a null assignee.
  *
  * If an item references a deleted list, it falls back to the inbox.

@@ -23,7 +23,7 @@ test.describe('checklists', () => {
 
 	test('back arrow navigates to /', async ({ page }) => {
 		await page.getByTestId('back-to-tasks').click();
-		await expect(page).toHaveURL('http://localhost:4173/');
+		await expect(page).toHaveURL(/\/$/);
 		await expect(page.getByTestId('board')).toBeVisible();
 	});
 

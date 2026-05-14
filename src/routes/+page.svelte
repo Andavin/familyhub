@@ -3,8 +3,10 @@
 	import TaskRow from '$lib/components/TaskRow.svelte';
 	import AddTaskInline from '$lib/components/AddTaskInline.svelte';
 	import ApplyChecklistModal from '$lib/components/ApplyChecklistModal.svelte';
+	import CompletedByModal from '$lib/components/CompletedByModal.svelte';
 	import ListEditModal from '$lib/components/ListEditModal.svelte';
 	import TaskDetailModal from '$lib/components/TaskDetailModal.svelte';
+	import { CompletionFlow } from '$lib/completion-flow.svelte';
 	import { colorVar } from '$lib/colors';
 	import { isOverdue } from '$lib/format';
 	import type { PageData } from './$types';
@@ -69,6 +71,9 @@
 	let taskBeingEdited = $state<Task | null>(null);
 	let expandedDone = $state<Record<number, boolean>>({});
 	let expandedScheduled = $state<Record<number, boolean>>({});
+	// Shared flow handles the "ask who completed an unassigned task" UX +
+	// the actual POST. See lib/completion-flow.svelte.ts.
+	const completion = new CompletionFlow();
 
 	let toast = $state('');
 	let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -76,15 +81,6 @@
 		toast = msg;
 		if (toastTimer) clearTimeout(toastTimer);
 		toastTimer = setTimeout(() => (toast = ''), 2400);
-	}
-
-	async function complete(t: Task, done: boolean) {
-		await fetch(`/api/tasks/${t.id}/complete`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ action: done ? 'complete' : 'uncomplete' })
-		});
-		await invalidateAll();
 	}
 
 	async function addTask(col: Column, title: string) {
@@ -164,7 +160,7 @@
 					<TaskRow
 						{task}
 						color={col.list.color}
-						onComplete={complete}
+						onComplete={completion.start}
 						onopen={openTask}
 					/>
 				{/each}
@@ -192,7 +188,7 @@
 									<TaskRow
 										{task}
 										color={col.list.color}
-										onComplete={complete}
+										onComplete={completion.start}
 										onopen={openTask}
 									/>
 								{/each}
@@ -219,7 +215,7 @@
 									<TaskRow
 										task={entry.task}
 										color={col.list.color}
-										onComplete={complete}
+										onComplete={completion.start}
 										onopen={openTask}
 										readOnly={!!entry.orphan}
 									/>
@@ -269,6 +265,14 @@
 	}}
 />
 
+<CompletedByModal
+	open={completion.pending !== null}
+	users={data.users}
+	taskTitle={completion.pending?.title ?? ''}
+	onpick={completion.pickCompletedBy}
+	oncancel={completion.cancelPicker}
+/>
+
 {#if toast}
 	<div class="toast" role="status">{toast}</div>
 {/if}
@@ -280,6 +284,10 @@
 		overflow-x: auto;
 		overflow-y: hidden;
 		padding: 0.5rem 1rem 2rem;
+		/* Make scroll-snap respect the container's left padding so the
+		   first column doesn't slam against the viewport edge when you
+		   bounce back to the start. */
+		scroll-padding-left: 1rem;
 		flex: 1;
 		align-items: stretch;
 	}
@@ -287,6 +295,7 @@
 		.board {
 			padding-left: 2rem;
 			padding-right: 2rem;
+			scroll-padding-left: 2rem;
 		}
 	}
 	.column {

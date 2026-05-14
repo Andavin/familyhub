@@ -5,6 +5,8 @@
 		type EventDetail
 	} from '$lib/components/EventDetailModal.svelte';
 	import TaskDetailModal from '$lib/components/TaskDetailModal.svelte';
+	import CompletedByModal from '$lib/components/CompletedByModal.svelte';
+	import { CompletionFlow } from '$lib/completion-flow.svelte';
 	import { colorVar } from '$lib/colors';
 	import type { PageData } from './$types';
 	import type { Task } from '$lib/server/schema';
@@ -220,6 +222,8 @@
 	let overflowOpen = $state(false);
 	let overflowItems = $state<Pill[]>([]);
 	let overflowHourLabel = $state('');
+	// Shared completion flow — see lib/completion-flow.svelte.ts.
+	const completion = new CompletionFlow();
 
 	function openEvent(ev: EventDetail) {
 		eventBeingShown = ev;
@@ -239,14 +243,10 @@
 		overflowOpen = true;
 	}
 
-	async function setComplete(t: Task, done: boolean) {
-		await fetch(`/api/tasks/${t.id}/complete`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ action: done ? 'complete' : 'uncomplete' })
-		});
-		await invalidateAll();
-	}
+	// Bind to the shared completion flow's start handler so day-view
+	// rows behave identically to the tasks board (modal for unassigned,
+	// straight POST otherwise).
+	const setComplete = completion.start;
 </script>
 
 {#snippet pillRow(p: Pill)}
@@ -486,6 +486,14 @@
 	onsaved={async () => {
 		await invalidateAll();
 	}}
+/>
+
+<CompletedByModal
+	open={completion.pending !== null}
+	users={data.users}
+	taskTitle={completion.pending?.title ?? ''}
+	onpick={completion.pickCompletedBy}
+	oncancel={completion.cancelPicker}
 />
 
 {#if overflowOpen}
