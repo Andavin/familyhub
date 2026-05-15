@@ -23,6 +23,7 @@
 	}
 
 	let newName = $state('');
+	let newAmount = $state(1);
 	let busy = $state(false);
 	let addStoreId = $state<number | null>(readStored<number | null>(ADD_STORE_KEY, null));
 	let sortMode = $state<'date' | 'tag'>(readStored<'date' | 'tag'>(SORT_KEY, 'date'));
@@ -30,6 +31,14 @@
 	let editingItem = $state<GroceryItem | null>(null);
 	let managingStores = $state(false);
 	let freshTags = $state<Tag[]>([]);
+	let toast = $state('');
+	let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function showToast(msg: string) {
+		toast = msg;
+		if (toastTimer) clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => (toast = ''), 2400);
+	}
 
 	$effect(() => {
 		if (typeof localStorage === 'undefined') return;
@@ -113,12 +122,24 @@
 		if (!v || busy) return;
 		busy = true;
 		try {
-			await fetch('/api/grocery', {
+			const res = await fetch('/api/grocery', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ name: v, storeId: addStoreId, amount: 1 })
+				body: JSON.stringify({ name: v, storeId: addStoreId, amount: newAmount })
 			});
+			if (res.ok) {
+				const data = (await res.json()) as {
+					mode: 'created' | 'merged' | 'flipped';
+					item: GroceryItem;
+				};
+				if (data.mode === 'merged') {
+					showToast(`Increased "${data.item.name}" to × ${data.item.amount}`);
+				} else if (data.mode === 'flipped') {
+					showToast(`Restored "${data.item.name}"`);
+				}
+			}
 			newName = '';
+			newAmount = 1;
 			await invalidateAll();
 		} finally {
 			busy = false;
@@ -214,6 +235,20 @@
 			data-testid="grocery-add-input"
 			class="flex-1 outline-none bg-transparent"
 		/>
+		<div class="amount-stepper" aria-label="Amount">
+			<button
+				type="button"
+				onclick={() => (newAmount = Math.max(1, newAmount - 1))}
+				aria-label="Decrease amount"
+				disabled={newAmount <= 1}>−</button
+			>
+			<span class="amount-value" data-testid="grocery-add-amount">{newAmount}</span>
+			<button
+				type="button"
+				onclick={() => (newAmount += 1)}
+				aria-label="Increase amount">＋</button
+			>
+		</div>
 		<button
 			type="button"
 			onclick={add}
@@ -387,6 +422,10 @@
 	onclose={() => (managingStores = false)}
 	oninvalidate={() => invalidateAll()}
 />
+
+{#if toast}
+	<div class="toast" role="status" data-testid="grocery-toast">{toast}</div>
+{/if}
 
 <style>
 	.stores-btn {
@@ -622,5 +661,46 @@
 	.empty {
 		padding: 4rem 1rem;
 		text-align: center;
+	}
+	.amount-stepper {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.2rem;
+		background: var(--color-canvas);
+		border-radius: 9999px;
+		padding: 0.18rem;
+	}
+	.amount-stepper button {
+		width: 1.7rem;
+		height: 1.7rem;
+		border-radius: 9999px;
+		font-weight: 600;
+		color: var(--color-ink-2);
+	}
+	.amount-stepper button:hover:not(:disabled) {
+		background: var(--color-card);
+	}
+	.amount-stepper button:disabled {
+		opacity: 0.35;
+		cursor: not-allowed;
+	}
+	.amount-value {
+		min-width: 1.4rem;
+		text-align: center;
+		font-size: 0.9rem;
+		font-weight: 600;
+	}
+	.toast {
+		position: fixed;
+		bottom: 1.5rem;
+		left: 50%;
+		transform: translateX(-50%);
+		background: var(--color-toast-bg);
+		color: white;
+		padding: 0.6rem 1.1rem;
+		border-radius: 9999px;
+		font-size: 0.9rem;
+		z-index: 60;
+		box-shadow: 0 6px 24px -6px var(--color-shadow-lg);
 	}
 </style>

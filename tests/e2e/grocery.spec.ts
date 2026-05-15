@@ -66,6 +66,38 @@ test.describe('grocery', () => {
 		await expect(dialog.getByText('Sprouts')).toHaveCount(0);
 	});
 
+	test('adding the same name+store on the active list bumps amount and toasts', async ({
+		page
+	}) => {
+		const input = page.getByTestId('grocery-add-input');
+		await input.fill('Apples');
+		await input.press('Enter');
+
+		const row = page.locator('[data-testid^="grocery-row-"]', { hasText: 'Apples' });
+		await expect(row).toHaveCount(1);
+
+		// Same name + same store (Unassigned in both cases) → bump amount.
+		await input.fill('Apples');
+		await input.press('Enter');
+		await expect(row).toHaveCount(1);
+		await expect(row).toContainText('× 2');
+		await expect(page.getByTestId('grocery-toast')).toBeVisible();
+	});
+
+	test('amount stepper applies the input amount on add', async ({ page }) => {
+		const input = page.getByTestId('grocery-add-input');
+		await input.fill('Carrots');
+		await page.getByRole('button', { name: 'Increase amount' }).click();
+		await page.getByRole('button', { name: 'Increase amount' }).click();
+		await expect(page.getByTestId('grocery-add-amount')).toHaveText('3');
+		await input.press('Enter');
+
+		const row = page.locator('[data-testid^="grocery-row-"]', { hasText: 'Carrots' });
+		await expect(row).toContainText('× 3');
+		// Stepper resets to 1 after add.
+		await expect(page.getByTestId('grocery-add-amount')).toHaveText('1');
+	});
+
 	test('adding the same item twice within the undo window flips it back', async ({ page }) => {
 		const input = page.getByTestId('grocery-add-input');
 		await input.fill('Eggs');

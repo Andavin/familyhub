@@ -1,6 +1,6 @@
 import { db } from './db';
 import { groceryItems, groceryPurchases, type GroceryItem } from './schema';
-import { and, desc, eq, gt, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 
 /**
  * Single source of truth for the "treat a check-off as undoable" window.
@@ -94,12 +94,19 @@ export async function undoPurchase(
 	return updated ?? null;
 }
 
+export type AddItemMode = 'created' | 'merged' | 'flipped';
+export type AddItemResult = { item: GroceryItem; mode: AddItemMode };
+
 /**
- * If a same-name item is checked within the undo window, flip it back
- * instead of creating a duplicate row. Otherwise INSERT a new item.
- * Match is case-insensitive on trimmed name.
+ * Three-way add: same name + same store on the active list bumps the
+ * existing item's amount; same name on a recently-purchased row flips
+ * it back to active (the "I changed my mind" path within the undo
+ * window); otherwise INSERT a fresh row. Match is case-insensitive on
+ * trimmed name.
  *
- * Returns `{ item, flipped }` so callers can react (e.g. UI feedback).
+ * Active-merge wins over flip-back when both could apply — buying
+ * three of something you already have on the list is the more common
+ * intent than reviving a duplicate.
  */
 export async function addOrFlipItem(
 	name: string,
@@ -109,11 +116,41 @@ export async function addOrFlipItem(
 		addedById?: number | null;
 	} = {},
 	now = Date.now()
-): Promise<{ item: GroceryItem; flipped: boolean } | null> {
+): Promise<AddItemResult | null> {
 	const trimmed = name.trim();
 	if (!trimmed) return null;
+	const addAmount = Math.max(1, Math.floor(opts.amount ?? 1));
+	const storeId = opts.storeId ?? null;
+
+	// Active-list dedup: same name + same store (including both-null)
+	// bumps the existing row's amount instead of creating a duplicate.
+	const storeMatch =
+		storeId == null
+			? isNull(groceryItems.storeId)
+			: eq(groceryItems.storeId, storeId);
+	const [active] = await db
+		.select()
+		.from(groceryItems)
+		.where(
+			and(
+				sql`lower(${groceryItems.name}) = lower(${trimmed})`,
+				isNull(groceryItems.lastPurchasedAt),
+				storeMatch
+			)
+		)
+		.limit(1);
+	if (active) {
+		const [merged] = await db
+			.update(groceryItems)
+			.set({ amount: active.amount + addAmount })
+			.where(eq(groceryItems.id, active.id))
+			.returning();
+		return merged ? { item: merged, mode: 'merged' } : null;
+	}
+
+	// Flip-back: same name on a recently-purchased row → revive it.
 	const cutoff = new Date(now - PURCHASE_UNDO_WINDOW_MS);
-	const [match] = await db
+	const [recent] = await db
 		.select()
 		.from(groceryItems)
 		.where(
@@ -124,11 +161,11 @@ export async function addOrFlipItem(
 			)
 		)
 		.limit(1);
-	if (match) {
+	if (recent) {
 		const [latest] = await db
 			.select({ id: groceryPurchases.id })
 			.from(groceryPurchases)
-			.where(eq(groceryPurchases.groceryItemId, match.id))
+			.where(eq(groceryPurchases.groceryItemId, recent.id))
 			.orderBy(desc(groceryPurchases.purchasedAt))
 			.limit(1);
 		if (latest) {
@@ -137,20 +174,21 @@ export async function addOrFlipItem(
 		const [flipped] = await db
 			.update(groceryItems)
 			.set({ lastPurchasedAt: null })
-			.where(eq(groceryItems.id, match.id))
+			.where(eq(groceryItems.id, recent.id))
 			.returning();
-		return flipped ? { item: flipped, flipped: true } : null;
+		return flipped ? { item: flipped, mode: 'flipped' } : null;
 	}
+
 	const [created] = await db
 		.insert(groceryItems)
 		.values({
 			name: trimmed,
-			storeId: opts.storeId ?? null,
-			amount: opts.amount ?? 1,
+			storeId,
+			amount: addAmount,
 			addedById: opts.addedById ?? null
 		})
 		.returning();
-	return created ? { item: created, flipped: false } : null;
+	return created ? { item: created, mode: 'created' } : null;
 }
 
 export type RecentPurchase = {

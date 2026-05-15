@@ -30,5 +30,5 @@ export const POST: RequestHandler = async ({ request }) => {
 		addedById: body.addedById ?? null
 	});
 	if (!result) throw error(400, 'name required');
-	return json(result, { status: result.flipped ? 200 : 201 });
+	return json(result, { status: result.mode === 'created' ? 201 : 200 });
 };
