@@ -59,7 +59,6 @@ export const tasks = sqliteTable(
 		recurFromCompletion: integer('recur_from_completion', { mode: 'boolean' })
 			.notNull()
 			.default(false),
-		flagged: integer('flagged', { mode: 'boolean' }).notNull().default(false),
 		priority: integer('priority').notNull().default(0),
 		// Set when a non-recurring task is checked off, OR when a recurring
 		// series has run out of occurrences and ends. Recurring tasks with

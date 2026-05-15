@@ -48,9 +48,6 @@
 				<span class="prio" data-prio={task.priority}>{priorityLabel}</span>
 			{/if}
 			<span class="task-title truncate">{task.title}</span>
-			{#if task.flagged}
-				<span aria-label="Flagged" title="Flagged" class="text-[color:var(--color-list-orange)]">⚑</span>
-			{/if}
 		</div>
 		{#if task.notes}
 			<div class="text-[13px] text-[color:var(--color-muted)] mt-0.5 truncate">

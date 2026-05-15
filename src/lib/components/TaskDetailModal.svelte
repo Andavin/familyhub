@@ -35,7 +35,6 @@
 	let dueDate = $state(''); // YYYY-MM-DD
 	let dueTime = $state(''); // HH:MM
 	let priority = $state(0); // 0=none 1=low 2=med 3=high
-	let flagged = $state(false);
 	let repeat = $state<'' | 'daily' | 'weekly' | 'monthly' | 'yearly'>('');
 	let interval = $state(1);
 	let recurFromCompletion = $state(false);
@@ -50,7 +49,6 @@
 			notes = task.notes ?? '';
 			listId = task.listId;
 			assigneeId = task.assigneeId;
-			flagged = task.flagged;
 			priority = task.priority ?? 0;
 			if (task.dueAt) {
 				const d = new Date(task.dueAt);
@@ -106,7 +104,6 @@
 				dueAt: due.iso,
 				dueHasTime: due.hasTime,
 				priority,
-				flagged,
 				rrule,
 				recurFromCompletion: rrule ? recurFromCompletion : false,
 				tagIds
@@ -303,14 +300,6 @@
 						</button>
 					{/each}
 				</div>
-			</div>
-
-			<div class="row">
-				<span class="label">Flag</span>
-				<label class="flex items-center gap-2 cursor-pointer">
-					<input type="checkbox" bind:checked={flagged} />
-					<span class="text-sm">{flagged ? 'Flagged' : 'Not flagged'}</span>
-				</label>
 			</div>
 
 			<div class="row align-top">
