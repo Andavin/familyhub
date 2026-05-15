@@ -15,7 +15,7 @@ export const load: PageServerLoad = async () => {
 			.from(lists)
 			.where(eq(lists.kind, 'chores'))
 			.orderBy(asc(lists.displayOrder)),
-		listTags(),
+		listTags('task'),
 		loadChecklistTagMap()
 	]);
 	return { checklists: cl, users: u, lists: ls, tags, checklistTags };

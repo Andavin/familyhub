@@ -28,7 +28,7 @@ export const load: PageServerLoad = async () => {
 			.orderBy(asc(tasks.sortOrder), asc(tasks.createdAt)),
 		loadDoneEntries(cutoff),
 		db.select().from(checklists),
-		listTags(),
+		listTags('task'),
 		loadTaskTagMap(),
 		loadChecklistTagMap()
 	]);

@@ -152,22 +152,85 @@ export const checklistTags = sqliteTable(
 	})
 );
 
+export const stores = sqliteTable('stores', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	name: text('name').notNull(),
+	emoji: text('emoji').notNull().default('🛒'),
+	color: text('color').notNull().default('blue'),
+	displayOrder: integer('display_order').notNull().default(0),
+	createdAt: integer('created_at', { mode: 'timestamp_ms' })
+		.notNull()
+		.default(sql`(unixepoch() * 1000)`)
+});
+
 export const groceryItems = sqliteTable(
 	'grocery_items',
 	{
 		id: integer('id').primaryKey({ autoIncrement: true }),
 		name: text('name').notNull(),
-		quantity: text('quantity'),
-		category: text('category').notNull().default('Other'),
-		checkedAt: integer('checked_at', { mode: 'timestamp_ms' }),
+		amount: integer('amount').notNull().default(1),
+		// Nullable: a fresh item with no store yet falls into the "Unassigned"
+		// group; deleting a store demotes its items rather than dropping them.
+		storeId: integer('store_id').references(() => stores.id, { onDelete: 'set null' }),
+		// Set when the item is checked off. A lazy sweep purges rows where
+		// this falls outside the undo window — see PURCHASE_UNDO_WINDOW_MS.
+		lastPurchasedAt: integer('last_purchased_at', { mode: 'timestamp_ms' }),
 		addedById: integer('added_by_id').references(() => users.id, { onDelete: 'set null' }),
 		createdAt: integer('created_at', { mode: 'timestamp_ms' })
 			.notNull()
 			.default(sql`(unixepoch() * 1000)`)
 	},
 	(t) => ({
-		categoryIdx: index('grocery_category_idx').on(t.category),
-		checkedIdx: index('grocery_checked_idx').on(t.checkedAt)
+		storeIdx: index('grocery_store_idx').on(t.storeId),
+		lastPurchasedIdx: index('grocery_last_purchased_idx').on(t.lastPurchasedAt)
+	})
+);
+
+/**
+ * Long-term purchase history. Independent of grocery_items lifetime — a
+ * row survives even after the source item is deleted, so future stats
+ * (cadence, frequency) can reference it.
+ *
+ * The 4h undo path deletes the row (treats the check-off as never having
+ * happened); see PURCHASE_UNDO_WINDOW_MS.
+ */
+export const groceryPurchases = sqliteTable(
+	'grocery_purchases',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		// Set null on item delete so history survives item cleanup. Within the
+		// undo window, this is how we find the live item to flip back.
+		groceryItemId: integer('grocery_item_id').references(() => groceryItems.id, {
+			onDelete: 'set null'
+		}),
+		// Snapshot so the row keeps meaning after the item row is purged.
+		nameSnapshot: text('name_snapshot').notNull(),
+		storeId: integer('store_id').references(() => stores.id, { onDelete: 'set null' }),
+		amount: integer('amount').notNull().default(1),
+		purchasedAt: integer('purchased_at', { mode: 'timestamp_ms' }).notNull(),
+		purchasedById: integer('purchased_by_id').references(() => users.id, {
+			onDelete: 'set null'
+		})
+	},
+	(t) => ({
+		itemIdx: index('grocery_purchases_item_idx').on(t.groceryItemId),
+		purchasedAtIdx: index('grocery_purchases_purchased_at_idx').on(t.purchasedAt)
+	})
+);
+
+export const groceryItemTags = sqliteTable(
+	'grocery_item_tags',
+	{
+		groceryItemId: integer('grocery_item_id')
+			.notNull()
+			.references(() => groceryItems.id, { onDelete: 'cascade' }),
+		tagId: integer('tag_id')
+			.notNull()
+			.references(() => tags.id, { onDelete: 'cascade' })
+	},
+	(t) => ({
+		pk: primaryKey({ columns: [t.groceryItemId, t.tagId] }),
+		tagIdx: index('grocery_item_tags_tag_idx').on(t.tagId)
 	})
 );
 
@@ -207,21 +270,26 @@ export const sessions = sqliteTable(
 );
 
 /**
- * Apple-Reminders-style tags. Tags are global (not list-scoped) and a
- * task can carry many tags. Names are stored lower-case so `#cleaning`
- * and `#Cleaning` collapse to one tag.
+ * Apple-Reminders-style tags. Names are stored lower-case so `#cleaning`
+ * and `#Cleaning` collapse to one tag. Scoped to a single surface
+ * (tasks/checklists or groceries) so the two pickers don't pollute each
+ * other — `#urgent` for tasks and `#urgent` for groceries coexist as
+ * separate rows under the same name.
  */
 export const tags = sqliteTable(
 	'tags',
 	{
 		id: integer('id').primaryKey({ autoIncrement: true }),
 		name: text('name').notNull(),
+		scope: text('scope', { enum: ['task', 'grocery'] })
+			.notNull()
+			.default('task'),
 		createdAt: integer('created_at', { mode: 'timestamp_ms' })
 			.notNull()
 			.default(sql`(unixepoch() * 1000)`)
 	},
 	(t) => ({
-		nameIdx: uniqueIndex('tags_name_idx').on(t.name)
+		nameScopeIdx: uniqueIndex('tags_name_scope_idx').on(t.name, t.scope)
 	})
 );
 
@@ -248,5 +316,9 @@ export type NewTask = typeof tasks.$inferInsert;
 export type Checklist = typeof checklists.$inferSelect;
 export type ChecklistTag = typeof checklistTags.$inferSelect;
 export type GroceryItem = typeof groceryItems.$inferSelect;
+export type Store = typeof stores.$inferSelect;
+export type GroceryPurchase = typeof groceryPurchases.$inferSelect;
+export type GroceryItemTag = typeof groceryItemTags.$inferSelect;
 export type Tag = typeof tags.$inferSelect;
+export type TagScope = NonNullable<Tag['scope']>;
 export type TaskTag = typeof taskTags.$inferSelect;
