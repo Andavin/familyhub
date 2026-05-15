@@ -98,6 +98,20 @@ test.describe('grocery', () => {
 		await expect(page.getByTestId('grocery-add-amount')).toHaveText('1');
 	});
 
+	test('edit modal delete button confirms and removes the row', async ({ page }) => {
+		const input = page.getByTestId('grocery-add-input');
+		await input.fill('Lettuce');
+		await input.press('Enter');
+
+		const row = page.locator('[data-testid^="grocery-row-"]', { hasText: 'Lettuce' });
+		await row.getByRole('button', { name: /Edit Lettuce/ }).click();
+		await page.getByTestId('grocery-edit-delete').click();
+		await expect(page.getByRole('alertdialog')).toBeVisible();
+		await page.getByTestId('confirm-ok').click();
+
+		await expect(row).toHaveCount(0);
+	});
+
 	test('adding the same item twice within the undo window flips it back', async ({ page }) => {
 		const input = page.getByTestId('grocery-add-input');
 		await input.fill('Eggs');

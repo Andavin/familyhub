@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import TagPicker from './TagPicker.svelte';
+	import ConfirmDialog from './ConfirmDialog.svelte';
 	import type { GroceryItem, Store, Tag } from '$lib/server/schema';
 
 	type Props = {
@@ -21,6 +22,7 @@
 	let selectedTagIds = $state<number[]>([]);
 	let busy = $state(false);
 	let nameInput = $state<HTMLInputElement | null>(null);
+	let confirmDelete = $state(false);
 
 	$effect(() => {
 		if (open && item) {
@@ -54,8 +56,26 @@
 		}
 	}
 
+	async function deleteItem() {
+		if (!item || busy) return;
+		busy = true;
+		try {
+			await fetch(`/api/grocery/${item.id}`, { method: 'DELETE' });
+			confirmDelete = false;
+			await onsaved();
+		} finally {
+			busy = false;
+		}
+	}
+
 	function onkey(e: KeyboardEvent) {
-		if (e.key === 'Escape') oncancel();
+		if (e.key === 'Escape') {
+			if (confirmDelete) {
+				confirmDelete = false;
+				return;
+			}
+			oncancel();
+		}
 		if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
 			e.preventDefault();
 			save();
@@ -137,6 +157,14 @@
 		</div>
 
 		<div class="flex items-center gap-2 mt-5">
+			<button
+				class="btn danger"
+				onclick={() => (confirmDelete = true)}
+				disabled={busy}
+				data-testid="grocery-edit-delete"
+			>
+				Delete
+			</button>
 			<div class="flex-1"></div>
 			<button class="btn ghost" onclick={oncancel}>Cancel</button>
 			<button
@@ -149,6 +177,16 @@
 			</button>
 		</div>
 	</div>
+
+	<ConfirmDialog
+		open={confirmDelete}
+		title={`Delete "${item.name}"?`}
+		message="This cannot be undone."
+		confirmLabel="Delete"
+		destructive
+		onconfirm={deleteItem}
+		oncancel={() => (confirmDelete = false)}
+	/>
 {/if}
 
 <style>
@@ -246,5 +284,12 @@
 	}
 	.btn.primary:disabled {
 		opacity: 0.5;
+	}
+	.btn.danger {
+		background: transparent;
+		color: var(--color-list-red);
+	}
+	.btn.danger:hover {
+		background: color-mix(in srgb, var(--color-list-red) 12%, transparent);
 	}
 </style>
