@@ -10,6 +10,9 @@
 
 	const ADD_STORE_KEY = 'fh_grocery_last_added_store';
 	const SORT_KEY = 'fh_grocery_sort';
+	const FILTER_KEY = 'fh_grocery_store_filter';
+
+	type StoreFilter = 'all' | 'unassigned' | number;
 
 	function readStored<T>(key: string, fallback: T): T {
 		if (typeof localStorage === 'undefined') return fallback;
@@ -27,6 +30,7 @@
 	let busy = $state(false);
 	let addStoreId = $state<number | null>(readStored<number | null>(ADD_STORE_KEY, null));
 	let sortMode = $state<'date' | 'tag'>(readStored<'date' | 'tag'>(SORT_KEY, 'date'));
+	let storeFilter = $state<StoreFilter>(readStored<StoreFilter>(FILTER_KEY, 'all'));
 	let storePickerOpen = $state(false);
 	let editingItem = $state<GroceryItem | null>(null);
 	let managingStores = $state(false);
@@ -46,6 +50,12 @@
 		localStorage.setItem(SORT_KEY, JSON.stringify(sortMode));
 	});
 
+	// Store filter persists on every chip tap.
+	$effect(() => {
+		if (typeof localStorage === 'undefined') return;
+		localStorage.setItem(FILTER_KEY, JSON.stringify(storeFilter));
+	});
+
 	// Default store, on the other hand, only updates on a successful
 	// add (see `add()` below) — picking a store in the dropdown but
 	// not actually adding shouldn't shift the next-session default.
@@ -55,6 +65,12 @@
 	$effect(() => {
 		if (addStoreId == null) return;
 		if (!data.stores.some((s) => s.id === addStoreId)) addStoreId = null;
+	});
+
+	// Same sanitization for the filter chip selection.
+	$effect(() => {
+		if (typeof storeFilter !== 'number') return;
+		if (!data.stores.some((s) => s.id === storeFilter)) storeFilter = 'all';
 	});
 
 	const allTags = $derived.by(() => {
@@ -75,15 +91,30 @@
 			const key = it.storeId != null && bucket.has(it.storeId) ? it.storeId : null;
 			bucket.get(key)!.push(it);
 		}
-		const out: Section[] = [];
+		const all: Section[] = [];
 		for (const s of data.stores) {
 			const items = bucket.get(s.id) ?? [];
-			if (items.length > 0) out.push({ storeId: s.id, store: s, items });
+			if (items.length > 0) all.push({ storeId: s.id, store: s, items });
 		}
 		const unassigned = bucket.get(null) ?? [];
-		if (unassigned.length > 0) out.push({ storeId: null, store: null, items: unassigned });
-		return out;
+		if (unassigned.length > 0) all.push({ storeId: null, store: null, items: unassigned });
+		if (storeFilter === 'all') return all;
+		if (storeFilter === 'unassigned') return all.filter((s) => s.storeId === null);
+		return all.filter((s) => s.storeId === storeFilter);
 	});
+
+	const filteredRecent = $derived.by(() => {
+		if (storeFilter === 'all') return data.recent;
+		if (storeFilter === 'unassigned') return data.recent.filter((p) => p.storeId == null);
+		return data.recent.filter((p) => p.storeId === storeFilter);
+	});
+
+	// The Unassigned chip only earns its place if there's actually
+	// something living there — otherwise it's dead UI on a clean board.
+	const hasUnassignedAny = $derived(
+		data.items.some((i) => i.storeId == null) ||
+			data.recent.some((p) => p.storeId == null)
+	);
 
 	function tagsFor(it: GroceryItem): Tag[] {
 		const ids = data.itemTags[it.id] ?? [];
@@ -289,7 +320,7 @@
 				aria-label="Close store picker"
 				onclick={() => (storePickerOpen = false)}
 			></button>
-			<ul class="picker" role="listbox">
+			<ul class="picker" role="listbox" data-testid="grocery-store-picker-list">
 				<li>
 					<button
 						type="button"
@@ -330,6 +361,43 @@
 			</ul>
 		{/if}
 	</div>
+
+	{#if data.stores.length > 0}
+		<div class="store-chips" role="radiogroup" aria-label="Filter by store">
+			<button
+				class="chip"
+				class:active={storeFilter === 'all'}
+				onclick={() => (storeFilter = 'all')}
+				aria-pressed={storeFilter === 'all'}
+				data-testid="store-chip-all"
+			>
+				All
+			</button>
+			{#each data.stores as s (s.id)}
+				<button
+					class="chip"
+					class:active={storeFilter === s.id}
+					onclick={() => (storeFilter = s.id)}
+					aria-pressed={storeFilter === s.id}
+					data-testid="store-chip-{s.id}"
+				>
+					<span aria-hidden="true">{s.emoji}</span>
+					<span class="truncate">{s.name}</span>
+				</button>
+			{/each}
+			{#if hasUnassignedAny}
+				<button
+					class="chip"
+					class:active={storeFilter === 'unassigned'}
+					onclick={() => (storeFilter = 'unassigned')}
+					aria-pressed={storeFilter === 'unassigned'}
+					data-testid="store-chip-unassigned"
+				>
+					Unassigned
+				</button>
+			{/if}
+		</div>
+	{/if}
 
 	{#if sections.length > 0}
 		<div class="sort-row">
@@ -404,14 +472,14 @@
 			</div>
 		{/each}
 
-		{#if data.recent.length > 0}
+		{#if filteredRecent.length > 0}
 			<section class="group purchased">
 				<header class="store-head muted">
 					<span aria-hidden="true">🧾</span>
 					<span class="store-name">Purchased</span>
-					<span class="store-count">{data.recent.length}</span>
+					<span class="store-count">{filteredRecent.length}</span>
 				</header>
-				{#each data.recent as p (p.id)}
+				{#each filteredRecent as p (p.id)}
 					{@const store = p.storeId != null ? storesById.get(p.storeId) : null}
 					<div class="recent-row" data-testid="recent-row-{p.id}">
 						{#if p.undoable && p.groceryItemId != null}
@@ -570,6 +638,33 @@
 		border-top: 1px solid var(--color-divider);
 		margin-top: 0.2rem;
 		padding-top: 0.6rem;
+	}
+	.store-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		padding: 0 0.3rem 0.8rem;
+	}
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.32rem 0.75rem;
+		background: var(--color-card);
+		color: var(--color-ink-2);
+		border-radius: 9999px;
+		font-size: 0.85rem;
+		font-weight: 500;
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
+		max-width: 12rem;
+	}
+	.chip:hover {
+		color: var(--color-ink);
+	}
+	.chip.active {
+		background: color-mix(in srgb, var(--color-list-blue) 20%, var(--color-card));
+		color: var(--color-list-blue);
+		font-weight: 700;
 	}
 	.sort-row {
 		display: flex;

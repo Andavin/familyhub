@@ -61,7 +61,7 @@ test.describe('grocery', () => {
 		await dialog.getByRole('button', { name: 'Close' }).click();
 
 		await page.getByTestId('grocery-add-store').click();
-		await expect(page.getByRole('button', { name: /Costco/ })).toBeVisible();
+		await expect(page.getByTestId('grocery-store-picker-list').getByRole('button', { name: /Costco/ })).toBeVisible();
 	});
 
 	test('Delete store asks via modal, not browser confirm', async ({ page }) => {
@@ -129,6 +129,98 @@ test.describe('grocery', () => {
 		await page.getByTestId('confirm-ok').click();
 
 		await expect(row).toHaveCount(0);
+	});
+
+	test('store filter chip narrows the active list and Purchased to one store', async ({
+		page
+	}) => {
+		// Unique store names so prior tests' Costco etc. don't collide
+		// with these assertions (DB is shared across the suite).
+		const storeA = 'FilterTestA';
+		const storeB = 'FilterTestB';
+		await page.getByTestId('manage-stores').click();
+		const stores = page.getByRole('dialog', { name: 'Stores' });
+		const nameInput = stores.getByLabel('New store name');
+		await nameInput.fill(storeA);
+		await stores.getByTestId('add-store').click();
+		await expect(stores.getByText(storeA, { exact: true })).toBeVisible();
+		await nameInput.fill(storeB);
+		await stores.getByTestId('add-store').click();
+		await expect(stores.getByText(storeB, { exact: true })).toBeVisible();
+		await stores.getByRole('button', { name: 'Close' }).click();
+
+		const picker = page.getByTestId('grocery-add-store');
+		const addInput = page.getByTestId('grocery-add-input');
+		const pickerList = page.getByTestId('grocery-store-picker-list');
+
+		await picker.click();
+		await pickerList.getByRole('button', { name: new RegExp(storeA) }).click();
+		await addInput.fill('Cheese');
+		await addInput.press('Enter');
+		await expect(page.locator('[data-testid^="grocery-row-"]', { hasText: 'Cheese' })).toHaveCount(1);
+
+		await picker.click();
+		await pickerList.getByRole('button', { name: new RegExp(storeB) }).click();
+		await addInput.fill('Tortillas');
+		await addInput.press('Enter');
+		await expect(
+			page.locator('[data-testid^="grocery-row-"]', { hasText: 'Tortillas' })
+		).toHaveCount(1);
+
+		// Filter to storeA: Cheese visible, Tortillas hidden.
+		await page
+			.locator('button[data-testid^="store-chip-"]')
+			.filter({ hasText: storeA })
+			.click();
+		await expect(page.locator('[data-testid^="grocery-row-"]', { hasText: 'Cheese' })).toHaveCount(1);
+		await expect(
+			page.locator('[data-testid^="grocery-row-"]', { hasText: 'Tortillas' })
+		).toHaveCount(0);
+	});
+
+	test('Purchased keeps separate entries when the same item is bought at different stores', async ({
+		page
+	}) => {
+		const storeA = 'DedupTestA';
+		const storeB = 'DedupTestB';
+		await page.getByTestId('manage-stores').click();
+		const stores = page.getByRole('dialog', { name: 'Stores' });
+		const nameInput = stores.getByLabel('New store name');
+		await nameInput.fill(storeA);
+		await stores.getByTestId('add-store').click();
+		await expect(stores.getByText(storeA, { exact: true })).toBeVisible();
+		await nameInput.fill(storeB);
+		await stores.getByTestId('add-store').click();
+		await expect(stores.getByText(storeB, { exact: true })).toBeVisible();
+		await stores.getByRole('button', { name: 'Close' }).click();
+
+		const picker = page.getByTestId('grocery-add-store');
+		const addInput = page.getByTestId('grocery-add-input');
+		const pickerList = page.getByTestId('grocery-store-picker-list');
+
+		// "ShareItem" at storeA, purchase it.
+		await picker.click();
+		await pickerList.getByRole('button', { name: new RegExp(storeA) }).click();
+		await addInput.fill('ShareItem');
+		await addInput.press('Enter');
+		await page
+			.locator('[data-testid^="grocery-row-"]', { hasText: 'ShareItem' })
+			.getByRole('button', { name: /Mark ShareItem purchased/i })
+			.click();
+		// Same name at storeB, purchase it too.
+		await picker.click();
+		await pickerList.getByRole('button', { name: new RegExp(storeB) }).click();
+		await addInput.fill('ShareItem');
+		await addInput.press('Enter');
+		await page
+			.locator('[data-testid^="grocery-row-"]', { hasText: 'ShareItem' })
+			.getByRole('button', { name: /Mark ShareItem purchased/i })
+			.click();
+
+		// Two distinct purchased entries — one per store.
+		await expect(
+			page.locator('[data-testid^="recent-row-"]', { hasText: 'ShareItem' })
+		).toHaveCount(2);
 	});
 
 	test('adding the same item twice within the undo window flips it back', async ({ page }) => {

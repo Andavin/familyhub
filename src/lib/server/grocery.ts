@@ -148,7 +148,10 @@ export async function addOrFlipItem(
 		return merged ? { item: merged, mode: 'merged' } : null;
 	}
 
-	// Flip-back: same name on a recently-purchased row → revive it.
+	// Flip-back: same name + same store on a recently-purchased row →
+	// revive it. The store match matters here too — buying milk at
+	// Costco shouldn't be cancelled by a Super 1 milk add 3h later;
+	// those are different items.
 	const cutoff = new Date(now - PURCHASE_UNDO_WINDOW_MS);
 	const [recent] = await db
 		.select()
@@ -157,7 +160,8 @@ export async function addOrFlipItem(
 			and(
 				sql`lower(${groceryItems.name}) = lower(${trimmed})`,
 				isNotNull(groceryItems.lastPurchasedAt),
-				gt(groceryItems.lastPurchasedAt, cutoff)
+				gt(groceryItems.lastPurchasedAt, cutoff),
+				storeMatch
 			)
 		)
 		.limit(1);
@@ -207,9 +211,10 @@ export type RecentPurchase = {
 };
 
 /**
- * Most-recent purchase per name within the last `days` days. Deduped in
- * JS — the set is small (one row per distinct grocery you've ever
- * bought, capped to the window).
+ * Most-recent purchase per (name, store) within the last `days` days.
+ * Same name at different stores stays distinct so the user can re-add
+ * the Costco vs Super 1 version of the same product independently.
+ * Deduped in JS — the set is small.
  */
 export async function recentPurchases(
 	days = 30,
@@ -225,7 +230,7 @@ export async function recentPurchases(
 	const seen = new Set<string>();
 	const out: RecentPurchase[] = [];
 	for (const r of rows) {
-		const key = r.nameSnapshot.toLowerCase();
+		const key = `${r.nameSnapshot.toLowerCase()}|${r.storeId ?? 'unassigned'}`;
 		if (seen.has(key)) continue;
 		seen.add(key);
 		out.push({
