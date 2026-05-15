@@ -38,6 +38,7 @@
 	let flagged = $state(false);
 	let repeat = $state<'' | 'daily' | 'weekly' | 'monthly' | 'yearly'>('');
 	let interval = $state(1);
+	let recurFromCompletion = $state(false);
 	let tagIds = $state<number[]>([]);
 	let confirmDelete = $state(false);
 	let recurringDelete = $state(false);
@@ -70,6 +71,7 @@
 				repeat = '';
 				interval = 1;
 			}
+			recurFromCompletion = task.recurFromCompletion ?? false;
 			tagIds = [...initialTagIds];
 		}
 	});
@@ -106,6 +108,7 @@
 				priority,
 				flagged,
 				rrule,
+				recurFromCompletion: rrule ? recurFromCompletion : false,
 				tagIds
 			};
 			const res = await fetch(`/api/tasks/${task.id}`, {
@@ -265,6 +268,25 @@
 					<span class="text-xs text-[color:var(--color-muted)]">{repeatLabel}</span>
 				{/if}
 			</div>
+
+			{#if repeat}
+				<div class="row">
+					<span class="label"></span>
+					<label class="flex items-center gap-2 cursor-pointer">
+						<input
+							type="checkbox"
+							bind:checked={recurFromCompletion}
+							data-testid="recur-from-completion"
+						/>
+						<span class="text-sm">From completion date</span>
+					</label>
+					<span class="text-xs text-[color:var(--color-muted)] ml-1">
+						{recurFromCompletion
+							? 'Next due is anchored at when you check it off'
+							: 'Next due follows the schedule regardless of completion'}
+					</span>
+				</div>
+			{/if}
 
 			<div class="row">
 				<span class="label">Priority</span>
