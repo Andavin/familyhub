@@ -198,6 +198,12 @@ export type RecentPurchase = {
 	storeId: number | null;
 	amount: number;
 	purchasedAt: Date;
+	/**
+	 * True when this purchase is still inside the undo window AND its
+	 * source item row hasn't been deleted. The page surfaces an
+	 * uncheck-to-restore affordance on undoable entries.
+	 */
+	undoable: boolean;
 };
 
 /**
@@ -210,6 +216,7 @@ export async function recentPurchases(
 	now = Date.now()
 ): Promise<RecentPurchase[]> {
 	const cutoff = new Date(now - days * 86_400_000);
+	const undoCutoff = new Date(now - PURCHASE_UNDO_WINDOW_MS);
 	const rows = await db
 		.select()
 		.from(groceryPurchases)
@@ -227,36 +234,39 @@ export async function recentPurchases(
 			nameSnapshot: r.nameSnapshot,
 			storeId: r.storeId,
 			amount: r.amount,
-			purchasedAt: r.purchasedAt
+			purchasedAt: r.purchasedAt,
+			undoable: r.groceryItemId != null && r.purchasedAt >= undoCutoff
 		});
 	}
 	return out;
 }
 
 /**
- * Add a fresh item from a historical purchase. Always creates a new
- * row (the undo path handles the ≤4h case before this is called).
- * Snapshot fields seed the new item; tags don't carry over (history
- * rows don't snapshot them).
+ * Re-add an item from a historical purchase. Past the undo window
+ * this routes through `addOrFlipItem` so the active-list dedup applies
+ * — tapping the same Purchased entry twice bumps the freshly-created
+ * row's amount rather than stacking duplicates.
+ *
+ * The in-window undo path (uncheck instead of re-add) is handled by
+ * the regular `PATCH /api/grocery/[id]` with `{ purchased: false }`
+ * — it's a different intent.
  */
 export async function reAddFromPurchase(
 	purchaseId: number,
 	addedById: number | null = null
-): Promise<GroceryItem | null> {
+): Promise<AddItemResult | null> {
 	const [p] = await db
 		.select()
 		.from(groceryPurchases)
 		.where(eq(groceryPurchases.id, purchaseId))
 		.limit(1);
 	if (!p) return null;
-	const [created] = await db
-		.insert(groceryItems)
-		.values({
-			name: p.nameSnapshot,
+	return addOrFlipItem(
+		p.nameSnapshot,
+		{
 			storeId: p.storeId,
 			amount: p.amount,
 			addedById
-		})
-		.returning();
-	return created ?? null;
+		}
+	);
 }

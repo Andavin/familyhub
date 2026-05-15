@@ -163,10 +163,28 @@
 	}
 
 	async function reAddRecent(purchaseId: number) {
-		await fetch(`/api/grocery/recent/${purchaseId}`, {
+		const res = await fetch(`/api/grocery/recent/${purchaseId}`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: '{}'
+		});
+		if (res.ok) {
+			const data = (await res.json()) as {
+				mode: 'created' | 'merged' | 'flipped';
+				item: GroceryItem;
+			};
+			if (data.mode === 'merged') {
+				showToast(`Increased "${data.item.name}" to × ${data.item.amount}`);
+			}
+		}
+		await invalidateAll();
+	}
+
+	async function undoPurchase(groceryItemId: number) {
+		await fetch(`/api/grocery/${groceryItemId}`, {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ purchased: false })
 		});
 		await invalidateAll();
 	}
@@ -394,15 +412,52 @@
 					<span class="store-count">{data.recent.length}</span>
 				</header>
 				{#each data.recent as p (p.id)}
-					<button
-						class="recent-row"
-						onclick={() => reAddRecent(p.id)}
-						data-testid="recent-row-{p.id}"
-					>
-						<span class="plus" aria-hidden="true">＋</span>
-						<span class="flex-1 truncate text-left">{p.nameSnapshot}</span>
-						<span class="when">{fmtRelative(p.purchasedAt)}</span>
-					</button>
+					{@const store = p.storeId != null ? storesById.get(p.storeId) : null}
+					<div class="recent-row" data-testid="recent-row-{p.id}">
+						{#if p.undoable && p.groceryItemId != null}
+							<button
+								class="checkbox checked"
+								onclick={() => undoPurchase(p.groceryItemId!)}
+								aria-label={`Undo purchase of ${p.nameSnapshot}`}
+								data-testid="recent-undo-{p.id}"
+							>
+								<svg viewBox="0 0 24 24" aria-hidden="true">
+									<path
+										d="M5 12.5l4 4L19 6.5"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="3"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								</svg>
+							</button>
+						{:else}
+							<button
+								class="plus-btn"
+								onclick={() => reAddRecent(p.id)}
+								aria-label={`Re-add ${p.nameSnapshot}`}
+								data-testid="recent-readd-{p.id}"
+							>
+								<span aria-hidden="true">＋</span>
+							</button>
+						{/if}
+						<div class="recent-body">
+							<div class="recent-title">
+								<span class="truncate">{p.nameSnapshot}</span>
+								{#if p.amount > 1}
+									<span class="amount">× {p.amount}</span>
+								{/if}
+							</div>
+							<div class="recent-meta">
+								<span class="store-tag">
+									<span aria-hidden="true">{store?.emoji ?? '🛒'}</span>
+									<span>{store?.name ?? 'Unassigned'}</span>
+								</span>
+								<span class="when">{fmtRelative(p.purchasedAt)}</span>
+							</div>
+						</div>
+					</div>
 				{/each}
 			</section>
 		{/if}
@@ -653,17 +708,68 @@
 	.recent-row:first-of-type {
 		border-top: none;
 	}
-	.recent-row:hover {
-		color: var(--color-ink);
+	.recent-body {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
 	}
-	.plus {
+	.recent-title {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+	}
+	.recent-meta {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		font-size: 0.75rem;
+	}
+	.store-tag {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		color: var(--color-muted);
+	}
+	.when {
+		color: var(--color-muted);
+		font-size: 0.75rem;
+		margin-left: auto;
+	}
+	.plus-btn {
+		width: 1.7rem;
+		height: 1.7rem;
+		border-radius: 9999px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		color: var(--color-list-blue);
 		font-weight: 700;
 		font-size: 1.1rem;
 	}
-	.when {
-		color: var(--color-muted);
-		font-size: 0.78rem;
+	.plus-btn:hover {
+		background: color-mix(in srgb, var(--color-list-blue) 12%, transparent);
+	}
+	.checkbox {
+		width: 1.5rem;
+		height: 1.5rem;
+		border-radius: 9999px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+	.checkbox.checked {
+		background: var(--color-list-green);
+		color: white;
+	}
+	.checkbox.checked:hover {
+		filter: brightness(0.94);
+	}
+	.checkbox svg {
+		width: 14px;
+		height: 14px;
 	}
 	.empty {
 		padding: 4rem 1rem;

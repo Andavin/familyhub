@@ -26,9 +26,28 @@ test.describe('grocery', () => {
 		const row = page.getByText('Bananas').locator('xpath=ancestor::div[contains(@class, "row")]');
 		await row.getByRole('button', { name: /Mark Bananas purchased/i }).click();
 
+		// Within the undo window the entry surfaces an "undo" checkbox
+		// rather than a re-add affordance.
 		await expect(page.getByText('Purchased')).toBeVisible();
-		// The recent-purchase entry is tappable to re-add.
-		await expect(page.getByRole('button', { name: /Bananas/ })).toBeVisible();
+		await expect(page.getByRole('button', { name: /Undo purchase of Bananas/i })).toBeVisible();
+	});
+
+	test('undo button in Purchased section within window restores the item', async ({ page }) => {
+		const input = page.getByTestId('grocery-add-input');
+		await input.fill('Yogurt');
+		await input.press('Enter');
+
+		const row = page.locator('[data-testid^="grocery-row-"]', { hasText: 'Yogurt' });
+		await row.getByRole('button', { name: /Mark Yogurt purchased/i }).click();
+
+		// Active row gone, Purchased entry now shows an undo checkbox.
+		await expect(row).toHaveCount(0);
+		await page.getByRole('button', { name: /Undo purchase of Yogurt/i }).click();
+
+		// Restored to the active list; the undo affordance is gone (the
+		// purchase row was deleted as part of undo).
+		await expect(page.locator('[data-testid^="grocery-row-"]', { hasText: 'Yogurt' })).toHaveCount(1);
+		await expect(page.getByRole('button', { name: /Undo purchase of Yogurt/i })).toHaveCount(0);
 	});
 
 	test('Manage Stores creates a store available in the picker', async ({ page }) => {
