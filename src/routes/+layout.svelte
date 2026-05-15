@@ -240,7 +240,16 @@
 		line-height: 1;
 	}
 
-	:global(.pb-bottom-nav) {
-		padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+	/*
+	 * Reserves space at the bottom of <main> so content doesn't tuck
+	 * under the fixed bottom nav. Scoped to phone via the same media
+	 * query that renders the nav — relying on Tailwind's md:pb-0 to
+	 * cancel it worked because of cascade order, but the media query
+	 * makes the relationship explicit and survives utility reordering.
+	 */
+	@media (max-width: 767px) {
+		:global(.pb-bottom-nav) {
+			padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+		}
 	}
 </style>

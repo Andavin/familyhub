@@ -99,7 +99,14 @@
 		<p class="text-xs text-[color:var(--color-muted)] mb-3">
 			Light or dark — applies to everyone using this kiosk.
 		</p>
-		<div class="theme-seg" role="radiogroup" aria-label="Theme">
+		<!--
+			A pair of mutually-exclusive toggle buttons rather than a
+			true ARIA radiogroup: `role="radiogroup"` would imply arrow-
+			key navigation between the options, which we don't
+			implement. `aria-pressed` matches the actual interaction
+			(click-to-select).
+		-->
+		<div class="theme-seg" aria-label="Theme">
 			{#each [
 				{ v: 'light' as Theme, label: 'Light', icon: '☀' },
 				{ v: 'dark' as Theme, label: 'Dark', icon: '☾' }

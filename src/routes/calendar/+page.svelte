@@ -8,6 +8,7 @@
 	import CompletedByModal from '$lib/components/CompletedByModal.svelte';
 	import { CompletionFlow } from '$lib/completion-flow.svelte';
 	import { colorVar } from '$lib/colors';
+	import { isPhoneViewport } from '$lib/breakpoints';
 	import type { PageData } from './$types';
 	import type { Task } from '$lib/server/schema';
 	import type { DoneEntry } from '$lib/server/done';
@@ -209,13 +210,9 @@
 	// pane sits below the month grid and you'd have to scroll past the
 	// whole calendar to see what's happening on a given day.
 	let showDayModal = $state(false);
-	function isPhone(): boolean {
-		if (typeof window === 'undefined') return false;
-		return window.matchMedia('(max-width: 767px)').matches;
-	}
 	function selectDay(d: Date) {
 		selected = new Date(d);
-		if (isPhone()) showDayModal = true;
+		if (isPhoneViewport()) showDayModal = true;
 	}
 
 	$effect(() => {
@@ -391,12 +388,20 @@
 	</div>
 
 	{#if showDayModal}
-		<button
-			type="button"
+		<!--
+			Decorative backdrop — clicking it dismisses, but it's not
+			tabbable or announced to assistive tech. The visible ✕ button
+			inside the modal header is the real close affordance and
+			Escape handles keyboard close (see the $effect above).
+			Matches the backdrop pattern used by every other modal in
+			the app.
+		-->
+		<div
 			class="phone-modal-backdrop"
+			role="presentation"
+			aria-hidden="true"
 			onclick={() => (showDayModal = false)}
-			aria-label="Close day details"
-		></button>
+		></div>
 	{/if}
 	<aside class="day-detail" class:phone-modal={showDayModal}>
 		<header>
