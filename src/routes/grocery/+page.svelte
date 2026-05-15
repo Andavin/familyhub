@@ -8,7 +8,7 @@
 
 	let { data }: { data: PageData } = $props();
 
-	const ADD_STORE_KEY = 'fh_grocery_add_store';
+	const ADD_STORE_KEY = 'fh_grocery_last_added_store';
 	const SORT_KEY = 'fh_grocery_sort';
 
 	function readStored<T>(key: string, fallback: T): T {
@@ -40,14 +40,15 @@
 		toastTimer = setTimeout(() => (toast = ''), 2400);
 	}
 
-	$effect(() => {
-		if (typeof localStorage === 'undefined') return;
-		localStorage.setItem(ADD_STORE_KEY, JSON.stringify(addStoreId));
-	});
+	// Sort mode is a UI preference — persist on every change.
 	$effect(() => {
 		if (typeof localStorage === 'undefined') return;
 		localStorage.setItem(SORT_KEY, JSON.stringify(sortMode));
 	});
+
+	// Default store, on the other hand, only updates on a successful
+	// add (see `add()` below) — picking a store in the dropdown but
+	// not actually adding shouldn't shift the next-session default.
 
 	// If the persisted store no longer exists (deleted in another tab),
 	// reset to "no store" rather than silently pinning a phantom id.
@@ -136,6 +137,12 @@
 					showToast(`Increased "${data.item.name}" to × ${data.item.amount}`);
 				} else if (data.mode === 'flipped') {
 					showToast(`Restored "${data.item.name}"`);
+				}
+				// Remember which store this add went to so the next page
+				// load defaults to it — saves picking the same store on
+				// every item during a multi-item shopping-list session.
+				if (typeof localStorage !== 'undefined') {
+					localStorage.setItem(ADD_STORE_KEY, JSON.stringify(addStoreId));
 				}
 			}
 			newName = '';
