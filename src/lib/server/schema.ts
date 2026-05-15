@@ -52,6 +52,13 @@ export const tasks = sqliteTable(
 		dueAt: integer('due_at', { mode: 'timestamp_ms' }),
 		dueHasTime: integer('due_has_time', { mode: 'boolean' }).notNull().default(false),
 		rrule: text('rrule'),
+		// When true, completing this recurring task anchors the next
+		// occurrence at the completion timestamp instead of the previous
+		// scheduled `dueAt`. Lets users with a "every N days from when I
+		// last did it" mental model match cadence to actual completion.
+		recurFromCompletion: integer('recur_from_completion', { mode: 'boolean' })
+			.notNull()
+			.default(false),
 		flagged: integer('flagged', { mode: 'boolean' }).notNull().default(false),
 		priority: integer('priority').notNull().default(0),
 		// Set when a non-recurring task is checked off, OR when a recurring
