@@ -36,11 +36,34 @@ test.describe('grocery', () => {
 		const dialog = page.getByRole('dialog', { name: 'Stores' });
 		await dialog.getByLabel('New store name').fill('Costco');
 		await dialog.getByTestId('add-store').click();
+		// Modal stays open after add — the new store should appear in
+		// the same dialog without needing to close + reopen.
+		await expect(dialog.getByText('Costco')).toBeVisible();
+		await dialog.getByRole('button', { name: 'Close' }).click();
 
-		// Modal closes via onclose / invalidateAll. Now the picker should
-		// include the new store.
 		await page.getByTestId('grocery-add-store').click();
 		await expect(page.getByRole('button', { name: /Costco/ })).toBeVisible();
+	});
+
+	test('Delete store asks via modal, not browser confirm', async ({ page }) => {
+		await page.getByTestId('manage-stores').click();
+		const dialog = page.getByRole('dialog', { name: 'Stores' });
+		await dialog.getByLabel('New store name').fill('Sprouts');
+		await dialog.getByTestId('add-store').click();
+		await expect(dialog.getByText('Sprouts')).toBeVisible();
+
+		const sproutsRow = dialog
+			.locator('li')
+			.filter({ hasText: 'Sprouts' });
+		await sproutsRow.getByRole('button', { name: 'Delete' }).click();
+
+		// Stacked confirm — distinct from browser confirm() popup.
+		await expect(page.getByRole('alertdialog')).toBeVisible();
+		await page.getByTestId('confirm-ok').click();
+
+		// Stores dialog stays open; the row is gone.
+		await expect(dialog).toBeVisible();
+		await expect(dialog.getByText('Sprouts')).toHaveCount(0);
 	});
 
 	test('adding the same item twice within the undo window flips it back', async ({ page }) => {

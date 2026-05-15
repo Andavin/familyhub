@@ -384,10 +384,8 @@
 <ManageStoresModal
 	open={managingStores}
 	stores={data.stores}
-	onclose={async () => {
-		managingStores = false;
-		await invalidateAll();
-	}}
+	onclose={() => (managingStores = false)}
+	oninvalidate={() => invalidateAll()}
 />
 
 <style>

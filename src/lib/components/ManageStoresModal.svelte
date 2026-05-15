@@ -1,12 +1,16 @@
 <script lang="ts">
+	import ConfirmDialog from './ConfirmDialog.svelte';
 	import type { Store } from '$lib/server/schema';
 
 	type Props = {
 		open: boolean;
 		stores: Store[];
-		onclose: () => Promise<void> | void;
+		onclose: () => void;
+		/** Fires after each add/edit/delete so the page can refresh `stores`
+		 * without the modal having to dismiss itself. */
+		oninvalidate: () => Promise<void> | void;
 	};
-	let { open, stores, onclose }: Props = $props();
+	let { open, stores, onclose, oninvalidate }: Props = $props();
 
 	let newName = $state('');
 	let newEmoji = $state('🛒');
@@ -14,6 +18,7 @@
 	let editingId = $state<number | null>(null);
 	let editName = $state('');
 	let editEmoji = $state('');
+	let pendingDelete = $state<Store | null>(null);
 
 	async function add() {
 		const v = newName.trim();
@@ -27,7 +32,7 @@
 			});
 			newName = '';
 			newEmoji = '🛒';
-			await onclose();
+			await oninvalidate();
 		} finally {
 			busy = false;
 		}
@@ -55,25 +60,32 @@
 				body: JSON.stringify({ name: v, emoji: editEmoji || '🛒' })
 			});
 			editingId = null;
-			await onclose();
+			await oninvalidate();
 		} finally {
 			busy = false;
 		}
 	}
 
-	async function remove(s: Store) {
-		if (!confirm(`Delete "${s.name}"? Items in this store will move to Unassigned.`)) return;
+	async function confirmDelete() {
+		if (!pendingDelete || busy) return;
 		busy = true;
 		try {
-			await fetch(`/api/stores/${s.id}`, { method: 'DELETE' });
-			await onclose();
+			await fetch(`/api/stores/${pendingDelete.id}`, { method: 'DELETE' });
+			pendingDelete = null;
+			await oninvalidate();
 		} finally {
 			busy = false;
 		}
 	}
 
 	function onkey(e: KeyboardEvent) {
-		if (e.key === 'Escape') onclose();
+		if (e.key === 'Escape') {
+			if (pendingDelete) {
+				pendingDelete = null;
+				return;
+			}
+			onclose();
+		}
 	}
 </script>
 
@@ -121,7 +133,11 @@
 						<span class="emoji" aria-hidden="true">{s.emoji}</span>
 						<span class="name flex-1 truncate">{s.name}</span>
 						<button class="action" onclick={() => startEdit(s)} aria-label="Edit">✎</button>
-						<button class="action danger" onclick={() => remove(s)} aria-label="Delete">✕</button>
+						<button
+							class="action danger"
+							onclick={() => (pendingDelete = s)}
+							aria-label="Delete">✕</button
+						>
 					{/if}
 				</li>
 			{:else}
@@ -153,6 +169,16 @@
 			</button>
 		</div>
 	</div>
+
+	<ConfirmDialog
+		open={pendingDelete !== null}
+		title={`Delete "${pendingDelete?.name ?? ''}"?`}
+		message="Items in this store will move to Unassigned."
+		confirmLabel="Delete"
+		destructive
+		onconfirm={confirmDelete}
+		oncancel={() => (pendingDelete = null)}
+	/>
 {/if}
 
 <style>
