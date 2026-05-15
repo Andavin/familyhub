@@ -226,9 +226,9 @@
 	}
 </script>
 
-<section class="px-4 sm:px-8 pb-3 flex items-center justify-between gap-3 flex-wrap">
+<section class="px-3 sm:px-8 pb-3 flex items-center justify-between gap-3 flex-wrap">
 	<div>
-		<h1 class="text-3xl sm:text-4xl font-display font-bold">
+		<h1 class="text-2xl sm:text-3xl xl:text-4xl font-display font-bold">
 			{new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
 		</h1>
 	</div>

@@ -119,7 +119,7 @@
 			</svg>
 		</a>
 		<div>
-			<h1 class="text-3xl sm:text-4xl font-display font-bold">Checklists</h1>
+			<h1 class="text-2xl sm:text-3xl xl:text-4xl font-display font-bold">Checklists</h1>
 			<p class="text-sm text-[color:var(--color-muted)]">
 				Bulk-add presets like "Pre-Trip" or "Saturday Reset"
 			</p>
@@ -320,6 +320,18 @@
 		border-radius: 1.1rem;
 		box-shadow: 0 1px 3px var(--color-shadow-sm);
 		margin-bottom: 0.75rem;
+	}
+	/* Phone: stack the action buttons below the body so a short title
+	 * like "Pre-Trip" doesn't fight three buttons for ~120px of width. */
+	@media (max-width: 767px) {
+		.card {
+			flex-wrap: wrap;
+			gap: 0.6rem;
+		}
+		.card > :global(.flex.gap-1\.5) {
+			width: 100%;
+			justify-content: flex-end;
+		}
 	}
 	.btn {
 		padding: 0.4rem 0.85rem;

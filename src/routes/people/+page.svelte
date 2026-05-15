@@ -35,7 +35,7 @@
 
 <section class="px-4 sm:px-8 pb-3 flex items-center justify-between">
 	<div>
-		<h1 class="text-3xl sm:text-4xl font-display font-bold">People</h1>
+		<h1 class="text-2xl sm:text-3xl xl:text-4xl font-display font-bold">People</h1>
 		<p class="text-sm text-[color:var(--color-muted)]">Family members in this household</p>
 	</div>
 	<button

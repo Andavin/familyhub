@@ -204,9 +204,32 @@
 	const today = new Date();
 
 	let selected = $state<Date | null>(today);
+	// On phone we hide the day-detail pane by default and only surface it
+	// as a modal sheet when the user taps a day — otherwise the entire
+	// pane sits below the month grid and you'd have to scroll past the
+	// whole calendar to see what's happening on a given day.
+	let showDayModal = $state(false);
+	function isPhone(): boolean {
+		if (typeof window === 'undefined') return false;
+		return window.matchMedia('(max-width: 767px)').matches;
+	}
+	function selectDay(d: Date) {
+		selected = new Date(d);
+		if (isPhone()) showDayModal = true;
+	}
+
 	$effect(() => {
 		// reset selection when month changes
 		selected = new Date(data.month.year, data.month.month, today.getDate());
+	});
+
+	$effect(() => {
+		if (!showDayModal) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') showDayModal = false;
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
 	});
 	const dayPills = $derived(selected ? pillsForDay(selected) : []);
 	const dayDone = $derived(selected ? completedForDay(selected) : []);
@@ -284,9 +307,9 @@
 	{/if}
 {/snippet}
 
-<section class="px-4 sm:px-8 pb-3 flex items-center justify-between gap-3 flex-wrap">
+<section class="px-3 sm:px-8 pb-3 flex items-center justify-between gap-3 flex-wrap">
 	<div>
-		<h1 class="text-3xl sm:text-4xl font-display font-bold">{monthName}</h1>
+		<h1 class="text-2xl sm:text-3xl xl:text-4xl font-display font-bold">{monthName}</h1>
 	</div>
 	<div class="flex gap-2 items-center flex-wrap">
 		<div class="chips" data-testid="filter-chips">
@@ -342,7 +365,7 @@
 					class:out={!inMonth}
 					class:today={isToday}
 					class:selected={isSelected}
-					onclick={() => (selected = new Date(d))}
+					onclick={() => selectDay(d)}
 					data-testid="cal-day-{d.toISOString().slice(0, 10)}"
 				>
 					<div class="num">{d.getDate()}</div>
@@ -367,17 +390,36 @@
 		</div>
 	</div>
 
-	<aside class="day-detail">
+	{#if showDayModal}
+		<button
+			type="button"
+			class="phone-modal-backdrop"
+			onclick={() => (showDayModal = false)}
+			aria-label="Close day details"
+		></button>
+	{/if}
+	<aside class="day-detail" class:phone-modal={showDayModal}>
 		<header>
-			<div class="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
-				{selected ? selected.toLocaleDateString([], { weekday: 'long' }) : ''}
+			<div>
+				<div class="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
+					{selected ? selected.toLocaleDateString([], { weekday: 'long' }) : ''}
+				</div>
+				<div class="text-3xl font-display font-bold">
+					{selected ? selected.getDate() : ''}
+					<span class="text-base font-normal text-[color:var(--color-muted)]">
+						{selected ? selected.toLocaleString([], { month: 'long' }) : ''}
+					</span>
+				</div>
 			</div>
-			<div class="text-3xl font-display font-bold">
-				{selected ? selected.getDate() : ''}
-				<span class="text-base font-normal text-[color:var(--color-muted)]">
-					{selected ? selected.toLocaleString([], { month: 'long' }) : ''}
-				</span>
-			</div>
+			<button
+				type="button"
+				class="phone-close-btn"
+				onclick={() => (showDayModal = false)}
+				aria-label="Close"
+				data-testid="day-modal-close"
+			>
+				✕
+			</button>
 		</header>
 
 		<div class="day-list" data-testid="day-list">
@@ -667,9 +709,65 @@
 		min-width: 280px;
 		box-shadow: 0 1px 3px var(--color-shadow-sm);
 	}
+	.day-detail header {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
 	@media (min-width: 1024px) {
 		.day-detail {
 			width: 320px;
+			flex-shrink: 0;
+		}
+	}
+
+	/*
+	 * Phone: hide the inline day-detail entirely and re-render it as a
+	 * fixed bottom-sheet when the user taps a day. The backdrop sits
+	 * just below it so taps outside dismiss. The close button (✕) only
+	 * shows on phone — desktop / tablet keep the always-visible pane.
+	 */
+	.phone-close-btn {
+		display: none;
+	}
+	@media (max-width: 767px) {
+		.day-detail {
+			display: none;
+		}
+		.day-detail.phone-modal {
+			display: block;
+			position: fixed;
+			top: 2rem;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			z-index: 51;
+			margin: 0;
+			min-width: 0;
+			overflow-y: auto;
+			border-radius: 1.25rem 1.25rem 0 0;
+			padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+			box-shadow: 0 -10px 30px -8px var(--color-shadow-lg);
+		}
+		.phone-modal-backdrop {
+			position: fixed;
+			inset: 0;
+			background: var(--color-backdrop);
+			z-index: 50;
+			border: none;
+			padding: 0;
+		}
+		.day-detail.phone-modal .phone-close-btn {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 2rem;
+			height: 2rem;
+			background: var(--color-canvas);
+			color: var(--color-ink-2);
+			border-radius: 9999px;
+			font-size: 1rem;
 			flex-shrink: 0;
 		}
 	}
