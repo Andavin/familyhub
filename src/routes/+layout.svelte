@@ -10,26 +10,16 @@
 		initTheme();
 	});
 
-	const navItems = [
-		{ href: '/', label: 'Tasks', icon: '✓', match: (p: string) => p === '/' },
-		{
-			href: '/calendar',
-			label: 'Calendar',
-			icon: '🗓',
-			match: (p: string) => p.startsWith('/calendar')
-		},
-		{
-			href: '/grocery',
-			label: 'Grocery',
-			icon: '🛒',
-			match: (p: string) => p.startsWith('/grocery')
-		},
-		{
-			href: '/people',
-			label: 'People',
-			icon: '👥',
-			match: (p: string) => p.startsWith('/people')
-		}
+	type NavItem = {
+		href: string;
+		label: string;
+		match: (p: string) => boolean;
+	};
+	const navItems: NavItem[] = [
+		{ href: '/', label: 'Tasks', match: (p) => p === '/' },
+		{ href: '/calendar', label: 'Calendar', match: (p) => p.startsWith('/calendar') },
+		{ href: '/grocery', label: 'Grocery', match: (p) => p.startsWith('/grocery') },
+		{ href: '/people', label: 'People', match: (p) => p.startsWith('/people') }
 	];
 </script>
 
@@ -72,30 +62,121 @@
 			</div>
 		</nav>
 
+		<!--
+			Phone-only top strip: just enough vertical space to host the
+			theme toggle without it overlapping the page's own top-right
+			action button (Stores / + New Checklist / + Add Person etc.).
+			Hidden on tablet+ where the top nav already has room for the
+			toggle.
+		-->
+		<div class="phone-top-strip" aria-hidden="false">
+			<ThemeToggle />
+		</div>
+
 		<main class="flex-1 flex flex-col min-h-0 pb-bottom-nav md:pb-0">
 			{@render children()}
 		</main>
 
-		<!--
-			Phone bottom tab bar. Fixed-bottom, safe-area aware, only
-			rendered below the md breakpoint (tablet+ uses the top nav).
-			The `pb-bottom-nav` utility on <main> reserves the height so
-			content doesn't tuck under it.
-		-->
 		<nav class="bottom-nav" aria-label="Primary">
 			{#each navItems as item (item.href)}
+				{@const active = item.match(page.url.pathname)}
 				<a
 					href={item.href}
 					class="bottom-nav-link"
-					class:active={item.match(page.url.pathname)}
+					class:active
+					aria-current={active ? 'page' : undefined}
 				>
-					<span class="bottom-nav-icon" aria-hidden="true">{item.icon}</span>
+					<span class="bottom-nav-icon" aria-hidden="true">
+						{#if item.href === '/'}
+							{#if active}
+								<!-- filled checkmark in a circle -->
+								<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+									<path
+										d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1.1 14.3-4.2-4.2 1.4-1.4 2.8 2.8 5.6-5.6 1.4 1.4-7 7z"
+									/>
+								</svg>
+							{:else}
+								<!-- outline checkmark in a circle -->
+								<svg
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.75"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<circle cx="12" cy="12" r="9" />
+									<path d="m8 12 3 3 5-6" />
+								</svg>
+							{/if}
+						{:else if item.href === '/calendar'}
+							{#if active}
+								<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+									<path
+										d="M7 2a1 1 0 0 1 1 1v1h8V3a1 1 0 1 1 2 0v1h1a3 3 0 0 1 3 3v13a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h1V3a1 1 0 0 1 1-1zm13 7H4v11a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9z"
+									/>
+								</svg>
+							{:else}
+								<svg
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.75"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<rect x="3" y="5" width="18" height="16" rx="2" />
+									<path d="M3 10h18M8 3v4M16 3v4" />
+								</svg>
+							{/if}
+						{:else if item.href === '/grocery'}
+							{#if active}
+								<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+									<path
+										d="M2 3a1 1 0 0 1 1-1h2.5a1 1 0 0 1 .97.76L7.13 6H21a1 1 0 0 1 .98 1.2l-1.5 7A1 1 0 0 1 19.5 15H8.27l-.34 1.5H19a1 1 0 1 1 0 2H7.13a1 1 0 0 1-.98-1.22l.55-2.43L4.27 4H3a1 1 0 0 1-1-1zm6 18a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm10 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"
+									/>
+								</svg>
+							{:else}
+								<svg
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.75"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<path d="M3 3h2.5l2 11h12L21 7H7" />
+									<circle cx="9" cy="19" r="1.25" />
+									<circle cx="18" cy="19" r="1.25" />
+								</svg>
+							{/if}
+						{:else if item.href === '/people'}
+							{#if active}
+								<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+									<path
+										d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm7-1a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM2 19c0-3.314 3.134-6 7-6s7 2.686 7 6v1H2v-1zm14.2-5.7c2.93.45 5.3 2.8 5.3 5.7v1h-4.5v-1c0-2.05-.8-3.92-2.1-5.34a8.4 8.4 0 0 1 1.3-.36z"
+									/>
+								</svg>
+							{:else}
+								<svg
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.75"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<circle cx="9" cy="8" r="3.5" />
+									<path d="M2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6" />
+									<circle cx="17" cy="9" r="2.5" />
+									<path d="M16 14.5c3 .4 5 2.6 5 5.5" />
+								</svg>
+							{/if}
+						{/if}
+					</span>
 					<span class="bottom-nav-label">{item.label}</span>
 				</a>
 			{/each}
-			<div class="bottom-nav-link" aria-hidden="false">
-				<ThemeToggle />
-			</div>
 		</nav>
 	</div>
 {/if}
@@ -114,13 +195,25 @@
 	}
 
 	/*
-	 * Bottom tab bar (phone only). The 64px height + safe-area padding
-	 * is also encoded in the `.pb-bottom-nav` utility below so main
-	 * content reserves the same space. Hidden by default; the media
-	 * query reveals it below the md breakpoint (768px). A Tailwind
-	 * `md:hidden` utility would lose to the `display: flex` here because
-	 * Tailwind v4 doesn't !important its utilities — the media query
-	 * keeps the relationship explicit either way.
+	 * Phone top strip — holds the theme toggle in its own row so it
+	 * doesn't fight the per-page right-side action button for the same
+	 * corner. Hidden on tablet+ (top nav has room there).
+	 */
+	.phone-top-strip {
+		display: none;
+	}
+	@media (max-width: 767px) {
+		.phone-top-strip {
+			display: flex;
+			justify-content: flex-end;
+			align-items: center;
+			padding: 0.5rem 0.85rem 0;
+		}
+	}
+
+	/*
+	 * Phone bottom tab bar. Four equal slots (no theme toggle — that's
+	 * on the floating button now). Stroked SVG icons fill on active.
 	 */
 	.bottom-nav {
 		display: none;
@@ -138,8 +231,8 @@
 			background: var(--color-card);
 			border-top: 1px solid var(--color-divider);
 			box-shadow: 0 -2px 10px var(--color-shadow-sm);
-			padding: 0.35rem 0.25rem;
-			padding-bottom: calc(0.35rem + env(safe-area-inset-bottom, 0px));
+			padding: 0.3rem 0.25rem;
+			padding-bottom: calc(0.3rem + env(safe-area-inset-bottom, 0px));
 		}
 	}
 	.bottom-nav-link {
@@ -148,19 +241,30 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 0.15rem;
-		padding: 0.25rem 0.1rem;
+		gap: 0.18rem;
+		padding: 0.4rem 0.25rem 0.3rem;
 		color: var(--color-muted);
-		font-size: 0.7rem;
-		font-weight: 600;
+		font-size: 0.68rem;
+		font-weight: 500;
+		letter-spacing: 0.005em;
 		text-decoration: none;
+		position: relative;
+		transition: color 120ms ease;
 	}
 	.bottom-nav-link.active {
 		color: var(--color-list-blue);
+		font-weight: 600;
 	}
 	.bottom-nav-icon {
-		font-size: 1.25rem;
-		line-height: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 26px;
+		height: 26px;
+	}
+	.bottom-nav-icon :global(svg) {
+		width: 24px;
+		height: 24px;
 	}
 	.bottom-nav-label {
 		line-height: 1;

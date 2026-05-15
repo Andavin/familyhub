@@ -702,6 +702,70 @@
 		font-size: 0.65rem;
 		color: var(--color-muted);
 	}
+
+	/*
+	 * Phone: stop trying to fit event titles into 50-pixel-wide cells.
+	 * Match Apple Calendar's "compact" zoom: each event becomes a small
+	 * coloured dot under the day number, capped at 5 across with a
+	 * "+N" suffix for the rest. Details are one tap away in the day
+	 * modal — see selectDay() / .day-detail.phone-modal.
+	 *
+	 * The cells also drop their padding and gap so the date numbers
+	 * have visual weight; the grid feels more like a real calendar and
+	 * less like seven columns of empty boxes.
+	 */
+	@media (max-width: 767px) {
+		.grid {
+			gap: 2px;
+		}
+		.cell {
+			min-height: 56px;
+			padding: 0.2rem 0.2rem 0.3rem;
+			gap: 0.1rem;
+			align-items: center;
+		}
+		.num {
+			font-size: 0.95rem;
+		}
+		.cell.today .num {
+			width: 1.55rem;
+			height: 1.55rem;
+		}
+		.pills {
+			flex-direction: row;
+			flex-wrap: wrap;
+			justify-content: center;
+			gap: 3px;
+			max-width: 100%;
+		}
+		.pill {
+			width: 6px;
+			height: 6px;
+			padding: 0;
+			border-radius: 9999px;
+			background: var(--pc);
+			color: transparent;
+			flex-shrink: 0;
+		}
+		.pill.reminder,
+		.pill.ghost {
+			background: var(--pc);
+			color: transparent;
+		}
+		.pill.ghost {
+			opacity: 0.55;
+		}
+		.pill :global(.plabel),
+		.pill :global(.rdot) {
+			display: none;
+		}
+		.more {
+			font-size: 0.6rem;
+			line-height: 1;
+			margin-top: 1px;
+			color: var(--color-muted);
+		}
+	}
 	.day-detail {
 		background: var(--color-card);
 		border-radius: 1.25rem;
