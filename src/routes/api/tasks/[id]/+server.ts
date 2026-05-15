@@ -17,6 +17,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		dueAt: string | null;
 		dueHasTime: boolean;
 		rrule: string | null;
+		recurFromCompletion: boolean;
 		flagged: boolean;
 		priority: number;
 		sortOrder: number;
@@ -34,6 +35,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	if ('dueAt' in body) update.dueAt = body.dueAt ? new Date(body.dueAt) : null;
 	if ('dueHasTime' in body) update.dueHasTime = body.dueHasTime;
 	if ('rrule' in body) update.rrule = body.rrule;
+	if ('recurFromCompletion' in body) update.recurFromCompletion = !!body.recurFromCompletion;
 	if ('flagged' in body) update.flagged = body.flagged;
 	if ('priority' in body) update.priority = body.priority;
 	if ('sortOrder' in body) update.sortOrder = body.sortOrder;

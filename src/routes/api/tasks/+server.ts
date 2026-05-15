@@ -29,6 +29,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		notes?: string;
 		dueAt?: string | null;
 		rrule?: string | null;
+		recurFromCompletion?: boolean;
 		flagged?: boolean;
 	};
 	if (!body.listId || !body.title) {
@@ -43,6 +44,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			notes: body.notes ?? null,
 			dueAt: body.dueAt ? new Date(body.dueAt) : null,
 			rrule: body.rrule ?? null,
+			recurFromCompletion: !!body.recurFromCompletion,
 			flagged: !!body.flagged
 		})
 		.returning();

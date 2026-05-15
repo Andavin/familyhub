@@ -74,7 +74,11 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const now = new Date();
 
 	if (task.rrule) {
-		const next = nextOccurrence(task.rrule, task.dueAt ?? now);
+		// `recurFromCompletion` makes "every N days" mean "N days from when
+		// I actually did it" — anchor at `now` instead of the prior schedule
+		// so completing late shifts the whole cadence forward.
+		const anchor = task.recurFromCompletion ? now : task.dueAt ?? now;
+		const next = nextOccurrence(task.rrule, anchor);
 		await db.insert(taskCompletions).values({
 			taskId: task.id,
 			seriesIdSnapshot: task.id,
