@@ -1,7 +1,6 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/state';
-	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { initTheme } from '$lib/theme.svelte';
 
 	let { children } = $props();
@@ -58,20 +57,8 @@
 						{item.label}
 					</a>
 				{/each}
-				<ThemeToggle />
 			</div>
 		</nav>
-
-		<!--
-			Phone-only top strip: just enough vertical space to host the
-			theme toggle without it overlapping the page's own top-right
-			action button (Stores / + New Checklist / + Add Person etc.).
-			Hidden on tablet+ where the top nav already has room for the
-			toggle.
-		-->
-		<div class="phone-top-strip" aria-hidden="false">
-			<ThemeToggle />
-		</div>
 
 		<main class="flex-1 flex flex-col min-h-0 pb-bottom-nav md:pb-0">
 			{@render children()}
@@ -192,23 +179,6 @@
 		background: var(--color-card);
 		color: var(--color-list-blue);
 		box-shadow: 0 1px 3px var(--color-shadow-sm);
-	}
-
-	/*
-	 * Phone top strip — holds the theme toggle in its own row so it
-	 * doesn't fight the per-page right-side action button for the same
-	 * corner. Hidden on tablet+ (top nav has room there).
-	 */
-	.phone-top-strip {
-		display: none;
-	}
-	@media (max-width: 767px) {
-		.phone-top-strip {
-			display: flex;
-			justify-content: flex-end;
-			align-items: center;
-			padding: 0.5rem 0.85rem 0;
-		}
 	}
 
 	/*
