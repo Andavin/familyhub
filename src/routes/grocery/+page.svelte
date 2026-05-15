@@ -1,29 +1,112 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import Checkbox from '$lib/components/Checkbox.svelte';
-	import { CATEGORIES } from '$lib/categories';
+	import GroceryItemEditModal from '$lib/components/GroceryItemEditModal.svelte';
+	import ManageStoresModal from '$lib/components/ManageStoresModal.svelte';
 	import type { PageData } from './$types';
-	import type { GroceryItem } from '$lib/server/schema';
+	import type { GroceryItem, Store, Tag } from '$lib/server/schema';
 
 	let { data }: { data: PageData } = $props();
 
+	const ADD_STORE_KEY = 'fh_grocery_add_store';
+	const SORT_KEY = 'fh_grocery_sort';
+
+	function readStored<T>(key: string, fallback: T): T {
+		if (typeof localStorage === 'undefined') return fallback;
+		const raw = localStorage.getItem(key);
+		if (raw == null) return fallback;
+		try {
+			return JSON.parse(raw) as T;
+		} catch {
+			return fallback;
+		}
+	}
+
 	let newName = $state('');
 	let busy = $state(false);
+	let addStoreId = $state<number | null>(readStored<number | null>(ADD_STORE_KEY, null));
+	let sortMode = $state<'date' | 'tag'>(readStored<'date' | 'tag'>(SORT_KEY, 'date'));
+	let storePickerOpen = $state(false);
+	let editingItem = $state<GroceryItem | null>(null);
+	let managingStores = $state(false);
+	let freshTags = $state<Tag[]>([]);
 
-	const grouped = $derived.by(() => {
-		const map = new Map<string, GroceryItem[]>();
-		for (const cat of CATEGORIES) map.set(cat, []);
-		for (const it of data.items) {
-			if (!it.checkedAt) {
-				const list = map.get(it.category) ?? [];
-				list.push(it);
-				map.set(it.category, list);
-			}
-		}
-		return Array.from(map.entries()).filter(([, items]) => items.length > 0);
+	$effect(() => {
+		if (typeof localStorage === 'undefined') return;
+		localStorage.setItem(ADD_STORE_KEY, JSON.stringify(addStoreId));
+	});
+	$effect(() => {
+		if (typeof localStorage === 'undefined') return;
+		localStorage.setItem(SORT_KEY, JSON.stringify(sortMode));
 	});
 
-	const checkedItems = $derived(data.items.filter((i) => i.checkedAt));
+	// If the persisted store no longer exists (deleted in another tab),
+	// reset to "no store" rather than silently pinning a phantom id.
+	$effect(() => {
+		if (addStoreId == null) return;
+		if (!data.stores.some((s) => s.id === addStoreId)) addStoreId = null;
+	});
+
+	const allTags = $derived.by(() => {
+		const seen = new Set(data.tags.map((t) => t.id));
+		return [...data.tags, ...freshTags.filter((t) => !seen.has(t.id))];
+	});
+	const tagById = $derived(new Map(allTags.map((t) => [t.id, t])));
+	const storesById = $derived(new Map(data.stores.map((s) => [s.id, s])));
+
+	type Section = { storeId: number | null; store: Store | null; items: GroceryItem[] };
+
+	const sections = $derived.by<Section[]>(() => {
+		const bucket = new Map<number | null, GroceryItem[]>();
+		for (const s of data.stores) bucket.set(s.id, []);
+		bucket.set(null, []);
+		for (const it of data.items) {
+			if (it.lastPurchasedAt) continue;
+			const key = it.storeId != null && bucket.has(it.storeId) ? it.storeId : null;
+			bucket.get(key)!.push(it);
+		}
+		const out: Section[] = [];
+		for (const s of data.stores) {
+			const items = bucket.get(s.id) ?? [];
+			if (items.length > 0) out.push({ storeId: s.id, store: s, items });
+		}
+		const unassigned = bucket.get(null) ?? [];
+		if (unassigned.length > 0) out.push({ storeId: null, store: null, items: unassigned });
+		return out;
+	});
+
+	function tagsFor(it: GroceryItem): Tag[] {
+		const ids = data.itemTags[it.id] ?? [];
+		return ids.map((id) => tagById.get(id)).filter((t): t is Tag => !!t);
+	}
+
+	type SubGroup = { tag: Tag | null; items: GroceryItem[] };
+
+	function subgroup(items: GroceryItem[]): SubGroup[] {
+		if (sortMode === 'date') {
+			return [{ tag: null, items }];
+		}
+		const byTag = new Map<number, GroceryItem[]>();
+		const untagged: GroceryItem[] = [];
+		for (const it of items) {
+			const its = tagsFor(it).sort((a, b) => a.name.localeCompare(b.name));
+			const primary = its[0];
+			if (!primary) {
+				untagged.push(it);
+				continue;
+			}
+			if (!byTag.has(primary.id)) byTag.set(primary.id, []);
+			byTag.get(primary.id)!.push(it);
+		}
+		const out: SubGroup[] = [];
+		for (const [tagId, items] of [...byTag.entries()].sort((a, b) =>
+			(tagById.get(a[0])?.name ?? '').localeCompare(tagById.get(b[0])?.name ?? '')
+		)) {
+			out.push({ tag: tagById.get(tagId) ?? null, items });
+		}
+		if (untagged.length > 0) out.push({ tag: null, items: untagged });
+		return out;
+	}
 
 	async function add() {
 		const v = newName.trim();
@@ -33,7 +116,7 @@
 			await fetch('/api/grocery', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ name: v })
+				body: JSON.stringify({ name: v, storeId: addStoreId, amount: 1 })
 			});
 			newName = '';
 			await invalidateAll();
@@ -42,11 +125,20 @@
 		}
 	}
 
-	async function toggle(it: GroceryItem) {
+	async function togglePurchased(it: GroceryItem) {
 		await fetch(`/api/grocery/${it.id}`, {
 			method: 'PATCH',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ checked: !it.checkedAt })
+			body: JSON.stringify({ purchased: !it.lastPurchasedAt })
+		});
+		await invalidateAll();
+	}
+
+	async function reAddRecent(purchaseId: number) {
+		await fetch(`/api/grocery/recent/${purchaseId}`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: '{}'
 		});
 		await invalidateAll();
 	}
@@ -62,20 +154,58 @@
 			add();
 		}
 	}
+
+	function chooseStore(id: number | null) {
+		addStoreId = id;
+		storePickerOpen = false;
+	}
+
+	const currentStore = $derived(addStoreId != null ? storesById.get(addStoreId) : undefined);
+
+	function fmtRelative(d: Date): string {
+		const diff = Date.now() - new Date(d).getTime();
+		const days = Math.floor(diff / 86_400_000);
+		if (days < 1) return 'today';
+		if (days === 1) return 'yesterday';
+		if (days < 7) return `${days}d ago`;
+		if (days < 30) return `${Math.floor(days / 7)}w ago`;
+		return `${Math.floor(days / 30)}mo ago`;
+	}
 </script>
 
-<section class="px-4 sm:px-8 pb-3 flex items-center gap-2">
+<section class="px-4 sm:px-8 pb-3 flex items-center gap-2 justify-between">
 	<div>
 		<h1 class="text-3xl sm:text-4xl font-display font-bold">Groceries</h1>
 		<p class="text-sm text-[color:var(--color-muted)]">
-			{data.items.filter((i) => !i.checkedAt).length} items
+			{data.items.filter((i) => !i.lastPurchasedAt).length} items
 		</p>
 	</div>
+	<button class="stores-btn" onclick={() => (managingStores = true)} data-testid="manage-stores">
+		<span aria-hidden="true">🏬</span>
+		<span>Stores</span>
+	</button>
 </section>
 
 <div class="px-4 sm:px-8 pb-8 max-w-2xl w-full mx-auto flex-1">
 	<div class="add-bar">
-		<span class="plus">＋</span>
+		<button
+			type="button"
+			class="store-pill"
+			onclick={() => (storePickerOpen = !storePickerOpen)}
+			aria-haspopup="listbox"
+			aria-expanded={storePickerOpen}
+			data-testid="grocery-add-store"
+		>
+			{#if currentStore}
+				<span aria-hidden="true">{currentStore.emoji}</span>
+				<span class="truncate">{currentStore.name}</span>
+			{:else}
+				<span aria-hidden="true">🛒</span>
+				<span>Any store</span>
+			{/if}
+			<span class="caret" aria-hidden="true">▾</span>
+		</button>
+
 		<input
 			type="text"
 			bind:value={newName}
@@ -92,32 +222,119 @@
 		>
 			Add
 		</button>
+
+		{#if storePickerOpen}
+			<button
+				class="picker-backdrop"
+				aria-label="Close store picker"
+				onclick={() => (storePickerOpen = false)}
+			></button>
+			<ul class="picker" role="listbox">
+				<li>
+					<button
+						type="button"
+						class="picker-row"
+						class:active={addStoreId == null}
+						onclick={() => chooseStore(null)}
+					>
+						<span aria-hidden="true">🛒</span>
+						<span>Any store</span>
+					</button>
+				</li>
+				{#each data.stores as s (s.id)}
+					<li>
+						<button
+							type="button"
+							class="picker-row"
+							class:active={addStoreId === s.id}
+							onclick={() => chooseStore(s.id)}
+						>
+							<span aria-hidden="true">{s.emoji}</span>
+							<span>{s.name}</span>
+						</button>
+					</li>
+				{/each}
+				<li>
+					<button
+						type="button"
+						class="picker-row add"
+						onclick={() => {
+							storePickerOpen = false;
+							managingStores = true;
+						}}
+					>
+						<span aria-hidden="true">＋</span>
+						<span>Add a store…</span>
+					</button>
+				</li>
+			</ul>
+		{/if}
 	</div>
 
+	{#if sections.length > 0}
+		<div class="sort-row">
+			<span class="sort-label">Group within store</span>
+			<div class="seg" role="radiogroup" aria-label="Sort">
+				<button
+					class:active={sortMode === 'date'}
+					onclick={() => (sortMode = 'date')}
+					aria-pressed={sortMode === 'date'}>Date</button
+				>
+				<button
+					class:active={sortMode === 'tag'}
+					onclick={() => (sortMode = 'tag')}
+					aria-pressed={sortMode === 'tag'}>Tag</button
+				>
+			</div>
+		</div>
+	{/if}
+
 	<div class="list">
-		{#each grouped as [cat, items] (cat)}
+		{#each sections as sec (sec.storeId ?? 'unassigned')}
 			<section class="group">
-				<h2 class="cat">{cat}</h2>
-				{#each items as it (it.id)}
-					<div class="row" data-testid="grocery-row-{it.id}">
-						<Checkbox
-							checked={!!it.checkedAt}
-							color="green"
-							onchange={() => toggle(it)}
-							label={`Check off ${it.name}`}
-						/>
-						<div class="flex-1 min-w-0">
-							<div class="truncate">{it.name}</div>
-							{#if it.quantity}
-								<div class="text-xs text-[color:var(--color-muted)]">{it.quantity}</div>
-							{/if}
+				<header class="store-head">
+					<span class="store-emoji" aria-hidden="true">{sec.store?.emoji ?? '🛒'}</span>
+					<span class="store-name">{sec.store?.name ?? 'Unassigned'}</span>
+					<span class="store-count">{sec.items.length}</span>
+				</header>
+				{#each subgroup(sec.items) as sg (sg.tag?.id ?? 'untagged')}
+					{#if sortMode === 'tag'}
+						<div class="subhead">{sg.tag ? `#${sg.tag.name}` : 'Untagged'}</div>
+					{/if}
+					{#each sg.items as it (it.id)}
+						<div class="row" data-testid="grocery-row-{it.id}">
+							<Checkbox
+								checked={false}
+								color="green"
+								onchange={() => togglePurchased(it)}
+								label={`Mark ${it.name} purchased`}
+							/>
+							<button
+								class="row-body"
+								onclick={() => (editingItem = it)}
+								aria-label={`Edit ${it.name}`}
+							>
+								<div class="row-title">
+									<span class="truncate">{it.name}</span>
+									{#if it.amount > 1}
+										<span class="amount">× {it.amount}</span>
+									{/if}
+								</div>
+								{#if tagsFor(it).length > 0}
+									<div class="chips">
+										{#each tagsFor(it) as t (t.id)}
+											<span class="chip">#{t.name}</span>
+										{/each}
+									</div>
+								{/if}
+							</button>
+							<button
+								class="row-action"
+								aria-label={`Remove ${it.name}`}
+								onclick={() => deleteItem(it)}>✕</button
+							>
 						</div>
-						<button
-							class="row-action"
-							aria-label={`Remove ${it.name}`}
-							onclick={() => deleteItem(it)}>✕</button
-						>
-					</div>
+					{/each}
 				{/each}
 			</section>
 		{:else}
@@ -127,22 +344,64 @@
 			</div>
 		{/each}
 
-		{#if checkedItems.length > 0}
-			<section class="group muted">
-				<h2 class="cat">Completed</h2>
-				{#each checkedItems as it (it.id)}
-					<div class="row done">
-						<Checkbox checked color="green" onchange={() => toggle(it)} />
-						<div class="flex-1 truncate">{it.name}</div>
-						<button class="row-action" onclick={() => deleteItem(it)} aria-label="Remove">✕</button>
-					</div>
+		{#if data.recent.length > 0}
+			<section class="group purchased">
+				<header class="store-head muted">
+					<span aria-hidden="true">🧾</span>
+					<span class="store-name">Purchased</span>
+					<span class="store-count">{data.recent.length}</span>
+				</header>
+				{#each data.recent as p (p.id)}
+					<button
+						class="recent-row"
+						onclick={() => reAddRecent(p.id)}
+						data-testid="recent-row-{p.id}"
+					>
+						<span class="plus" aria-hidden="true">＋</span>
+						<span class="flex-1 truncate text-left">{p.nameSnapshot}</span>
+						<span class="when">{fmtRelative(p.purchasedAt)}</span>
+					</button>
 				{/each}
 			</section>
 		{/if}
 	</div>
 </div>
 
+<GroceryItemEditModal
+	open={editingItem !== null}
+	item={editingItem}
+	stores={data.stores}
+	tags={allTags}
+	tagIds={editingItem ? (data.itemTags[editingItem.id] ?? []) : []}
+	oncancel={() => (editingItem = null)}
+	onsaved={async () => {
+		editingItem = null;
+		await invalidateAll();
+	}}
+	oncreatedTag={(t) => (freshTags = [...freshTags, t])}
+/>
+
+<ManageStoresModal
+	open={managingStores}
+	stores={data.stores}
+	onclose={async () => {
+		managingStores = false;
+		await invalidateAll();
+	}}
+/>
+
 <style>
+	.stores-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.45rem 0.85rem;
+		background: var(--color-card);
+		border-radius: 9999px;
+		font-size: 0.9rem;
+		font-weight: 600;
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
+	}
 	.add-bar {
 		display: flex;
 		align-items: center;
@@ -151,12 +410,97 @@
 		background: var(--color-card);
 		border-radius: 1rem;
 		box-shadow: 0 1px 3px var(--color-shadow-sm);
-		margin-bottom: 1.25rem;
+		margin-bottom: 1rem;
+		position: relative;
 	}
-	.plus {
+	.store-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.35rem 0.65rem;
+		background: var(--color-canvas);
+		border-radius: 9999px;
+		font-size: 0.85rem;
+		font-weight: 500;
+		max-width: 9rem;
+	}
+	.store-pill .caret {
+		font-size: 0.7rem;
+		color: var(--color-muted);
+	}
+	.picker-backdrop {
+		position: fixed;
+		inset: 0;
+		background: transparent;
+		z-index: 19;
+		cursor: default;
+	}
+	.picker {
+		position: absolute;
+		top: calc(100% + 0.4rem);
+		left: 0.85rem;
+		min-width: 12rem;
+		background: var(--color-card);
+		border-radius: 0.8rem;
+		box-shadow: 0 10px 25px -8px var(--color-shadow-lg);
+		padding: 0.3rem;
+		z-index: 20;
+		list-style: none;
+	}
+	.picker-row {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.45rem 0.7rem;
+		border-radius: 0.5rem;
+		text-align: left;
+		font-size: 0.9rem;
+	}
+	.picker-row:hover {
+		background: var(--color-canvas);
+	}
+	.picker-row.active {
+		background: color-mix(in srgb, var(--color-list-blue) 18%, var(--color-card));
+		color: var(--color-list-blue);
+		font-weight: 600;
+	}
+	.picker-row.add {
+		color: var(--color-list-blue);
+		font-weight: 600;
+		border-top: 1px solid var(--color-divider);
+		margin-top: 0.2rem;
+		padding-top: 0.6rem;
+	}
+	.sort-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0 0.3rem 0.8rem;
+	}
+	.sort-label {
+		font-size: 0.8rem;
+		color: var(--color-muted);
+		font-weight: 600;
+	}
+	.seg {
+		display: flex;
+		gap: 0.2rem;
+		background: var(--color-canvas);
+		padding: 0.18rem;
+		border-radius: 0.55rem;
+	}
+	.seg button {
+		padding: 0.25rem 0.7rem;
+		border-radius: 0.4rem;
+		font-size: 0.82rem;
+		color: var(--color-ink-2);
+	}
+	.seg button.active {
+		background: var(--color-card);
 		color: var(--color-list-blue);
 		font-weight: 700;
-		font-size: 1.2rem;
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
 	}
 	.list {
 		background: var(--color-card);
@@ -165,22 +509,45 @@
 		overflow: hidden;
 	}
 	.group {
-		padding: 0.6rem 1.1rem 0.4rem;
+		padding: 0.45rem 1rem 0.5rem;
 		border-bottom: 1px solid var(--color-divider);
 	}
 	.group:last-child {
 		border-bottom: none;
 	}
-	.group.muted .row {
-		opacity: 0.6;
-	}
-	.cat {
+	.store-head {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.55rem 0 0.35rem;
 		font-size: 0.78rem;
-		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
 		color: var(--color-muted);
-		padding: 0.5rem 0;
+		font-weight: 700;
+	}
+	.store-head.muted {
+		opacity: 0.7;
+	}
+	.store-emoji {
+		font-size: 1rem;
+	}
+	.store-name {
+		flex: 1;
+	}
+	.store-count {
+		background: var(--color-canvas);
+		padding: 0.05rem 0.45rem;
+		border-radius: 9999px;
+		font-size: 0.7rem;
+		letter-spacing: 0;
+		text-transform: none;
+	}
+	.subhead {
+		font-size: 0.72rem;
+		color: var(--color-muted);
+		padding: 0.45rem 0 0.2rem;
+		font-weight: 600;
 	}
 	.row {
 		display: flex;
@@ -192,9 +559,33 @@
 	.row:first-of-type {
 		border-top: none;
 	}
-	.row.done div {
-		text-decoration: line-through;
+	.row-body {
+		flex: 1;
+		min-width: 0;
+		text-align: left;
+		padding: 0.1rem 0;
+	}
+	.row-title {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+	}
+	.amount {
 		color: var(--color-muted);
+		font-size: 0.85rem;
+	}
+	.chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.3rem;
+		margin-top: 0.2rem;
+	}
+	.chip {
+		padding: 0.05rem 0.5rem;
+		background: var(--color-canvas);
+		border-radius: 9999px;
+		font-size: 0.72rem;
+		color: var(--color-ink-2);
 	}
 	.row-action {
 		opacity: 0;
@@ -205,6 +596,30 @@
 	}
 	.row:hover .row-action {
 		opacity: 1;
+	}
+	.recent-row {
+		display: flex;
+		align-items: center;
+		gap: 0.65rem;
+		padding: 0.5rem 0;
+		width: 100%;
+		border-top: 1px solid var(--color-divider);
+		color: var(--color-ink-2);
+	}
+	.recent-row:first-of-type {
+		border-top: none;
+	}
+	.recent-row:hover {
+		color: var(--color-ink);
+	}
+	.plus {
+		color: var(--color-list-blue);
+		font-weight: 700;
+		font-size: 1.1rem;
+	}
+	.when {
+		color: var(--color-muted);
+		font-size: 0.78rem;
 	}
 	.empty {
 		padding: 4rem 1rem;
