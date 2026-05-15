@@ -6,7 +6,7 @@ import { getOrCreateInbox } from '$lib/server/inbox';
 import { loadDoneEntries } from '$lib/server/done';
 import { listTags, loadTaskTagMap, loadChecklistTagMap } from '$lib/server/tags';
 import { isOverdue } from '$lib/format';
-import { nextOccurrenceAfter } from '$lib/server/recurrence';
+import { nextOccurrence, nextOccurrenceAfter } from '$lib/server/recurrence';
 
 export const load: PageServerLoad = async () => {
 	await getOrCreateInbox();
@@ -36,15 +36,22 @@ export const load: PageServerLoad = async () => {
 	// For overdue recurring tasks, project the next-after-now occurrence so
 	// the upcoming instance still shows in Scheduled. The actual stored row
 	// stays in Today with its overdue flag — this is purely a visual preview.
-	// We anchor the rrule at the task's original dueAt so the next instance
-	// follows the task's natural schedule (e.g. weekly task originally due
-	// last Monday → next is this Monday, not "now + 7d").
+	//
+	// Anchor matches the complete handler so the preview reflects what would
+	// actually happen on tap:
+	// - default: anchor at original `dueAt` (natural schedule — e.g. weekly
+	//   task originally due last Monday → next is this Monday)
+	// - `recurFromCompletion`: anchor at now (completion-anchored — next is
+	//   one cycle from now, since that's what a completion right now would
+	//   produce)
 	const now = new Date();
 	const projectedRecurring: Task[] = [];
 	for (const t of openTasks) {
 		if (!t.rrule || !t.dueAt) continue;
 		if (!isOverdue(new Date(t.dueAt), t.dueHasTime)) continue;
-		const next = nextOccurrenceAfter(t.rrule, new Date(t.dueAt), now);
+		const next = t.recurFromCompletion
+			? nextOccurrence(t.rrule, now)
+			: nextOccurrenceAfter(t.rrule, new Date(t.dueAt), now);
 		if (!next) continue;
 		projectedRecurring.push({ ...t, dueAt: next });
 	}

@@ -70,7 +70,7 @@ export async function loadDoneEntries(since: Date): Promise<DoneEntry[]> {
 					dueAt: completion.dueAtAtCompletion,
 					dueHasTime: false,
 					rrule: null,
-					flagged: false,
+					recurFromCompletion: false,
 					priority: 0,
 					completedAt: completion.completedAt,
 					completedBy: completion.completedBy,

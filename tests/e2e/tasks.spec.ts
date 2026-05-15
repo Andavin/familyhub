@@ -468,6 +468,80 @@ test.describe('tasks', () => {
 		await expect(firstCol.getByText('Doomed chore')).toBeVisible();
 	});
 
+	test('recurFromCompletion advances dueAt anchored at completion, not schedule', async ({
+		page
+	}) => {
+		const firstCol = page.getByTestId(/^column-/).first();
+		const colTestId = await firstCol.getAttribute('data-testid');
+		const listId = colTestId!.split('-')[1];
+
+		// Two near-identical monthly tasks due 3 days ago. Only the toggle
+		// differs. Completing them right now should advance:
+		// - off: next month from the original due date (~27 days from now)
+		// - on:  one month from "now" (~30 days from now)
+		const dueAt = new Date();
+		dueAt.setDate(dueAt.getDate() - 3);
+		dueAt.setHours(9, 0, 0, 0);
+
+		const ids = await page.evaluate(
+			async ([lid, iso]) => {
+				const mk = async (title: string, anchor: boolean) => {
+					const r = await fetch('/api/tasks', {
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({
+							listId: Number(lid),
+							title,
+							dueAt: iso,
+							rrule: 'FREQ=MONTHLY',
+							recurFromCompletion: anchor
+						})
+					});
+					return ((await r.json()) as { id: number }).id;
+				};
+				const offId = await mk('Monthly schedule-anchored', false);
+				const onId = await mk('Monthly completion-anchored', true);
+				const complete = (id: number) =>
+					fetch(`/api/tasks/${id}/complete`, {
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ action: 'complete' })
+					});
+				await complete(offId);
+				await complete(onId);
+				return { offId, onId };
+			},
+			[listId, dueAt.toISOString()]
+		);
+
+		const result = await page.evaluate(async (ids) => {
+			const all = (await fetch('/api/tasks').then((r) => r.json())) as {
+				id: number;
+				dueAt: string;
+			}[];
+			const off = all.find((t) => t.id === ids.offId);
+			const on = all.find((t) => t.id === ids.onId);
+			return { off: off?.dueAt, on: on?.dueAt };
+		}, ids);
+
+		const offDays = (new Date(result.off!).getTime() - Date.now()) / 86_400_000;
+		const onDays = (new Date(result.on!).getTime() - Date.now()) / 86_400_000;
+
+		// Off-toggle: anchored at original dueAt (3 days ago) → 1 month from
+		// then, so ~28 days from now (depending on month length).
+		expect(offDays).toBeGreaterThan(26);
+		expect(offDays).toBeLessThan(30);
+
+		// On-toggle: anchored at now → ~1 month from now (28-31 days).
+		expect(onDays).toBeGreaterThan(28);
+		expect(onDays).toBeLessThan(32);
+
+		// And the on-toggle next date should land *after* the off-toggle one
+		// by roughly the lateness (3 days), independent of month length.
+		expect(onDays - offDays).toBeGreaterThan(2);
+		expect(onDays - offDays).toBeLessThan(4);
+	});
+
 	test('delete from detail modal asks for confirmation', async ({ page }) => {
 		const firstCol = page.getByTestId(/^column-/).first();
 		const input = firstCol.getByTestId('add-task-input');

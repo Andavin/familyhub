@@ -29,7 +29,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		notes?: string;
 		dueAt?: string | null;
 		rrule?: string | null;
-		flagged?: boolean;
+		recurFromCompletion?: boolean;
 	};
 	if (!body.listId || !body.title) {
 		return json({ error: 'listId and title required' }, { status: 400 });
@@ -43,7 +43,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			notes: body.notes ?? null,
 			dueAt: body.dueAt ? new Date(body.dueAt) : null,
 			rrule: body.rrule ?? null,
-			flagged: !!body.flagged
+			recurFromCompletion: !!body.recurFromCompletion
 		})
 		.returning();
 	return json(row, { status: 201 });

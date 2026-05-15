@@ -57,6 +57,27 @@ describe('recurrence', () => {
 		const next = nextOccurrence(r as string, new Date('2030-01-01'));
 		expect(next).toBeNull();
 	});
+
+	// Pinned by the recur-from-completion feature: the helper itself is
+	// anchor-agnostic — switching between schedule-anchored and completion-
+	// anchored cadence is purely a matter of which date the caller passes
+	// as `previous`. These two cases together prove the contract the
+	// complete handler relies on.
+	it('monthly anchored at scheduled date advances by one calendar month', () => {
+		const r = buildRrule('monthly') as string;
+		const scheduled = new Date(2026, 4, 5); // May 5
+		const next = nextOccurrence(r, scheduled);
+		expect(next?.getMonth()).toBe(5); // June
+		expect(next?.getDate()).toBe(5);
+	});
+
+	it('monthly anchored at completion date advances by one month from that date', () => {
+		const r = buildRrule('monthly') as string;
+		const completed = new Date(2026, 4, 8); // user did it three days late
+		const next = nextOccurrence(r, completed);
+		expect(next?.getMonth()).toBe(5); // June
+		expect(next?.getDate()).toBe(8);
+	});
 });
 
 describe('futureOccurrences', () => {
