@@ -278,13 +278,8 @@
 							bind:checked={recurFromCompletion}
 							data-testid="recur-from-completion"
 						/>
-						<span class="text-sm">From completion date</span>
+						<span class="text-sm">From completion</span>
 					</label>
-					<span class="text-xs text-[color:var(--color-muted)] ml-1">
-						{recurFromCompletion
-							? 'Next due is anchored at when you check it off'
-							: 'Next due follows the schedule regardless of completion'}
-					</span>
 				</div>
 			{/if}
 
