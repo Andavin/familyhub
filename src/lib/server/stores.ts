@@ -55,14 +55,17 @@ export async function updateStore(
 /**
  * Re-stamp `displayOrder` from an ordered list of IDs. IDs not in `stores`
  * are silently dropped. Used by drag-reorder UIs.
+ *
+ * Wrapped in a transaction so a partial reorder can't leave the list in
+ * a half-renumbered state on crash.
  */
 export async function reorderStores(orderedIds: number[]): Promise<void> {
-	for (let i = 0; i < orderedIds.length; i++) {
-		await db
-			.update(stores)
-			.set({ displayOrder: i })
-			.where(eq(stores.id, orderedIds[i]));
-	}
+	// better-sqlite3 transactions are synchronous — see grocery.ts notes.
+	db.transaction((tx) => {
+		for (let i = 0; i < orderedIds.length; i++) {
+			tx.update(stores).set({ displayOrder: i }).where(eq(stores.id, orderedIds[i])).run();
+		}
+	});
 }
 
 export async function deleteStore(id: number): Promise<void> {

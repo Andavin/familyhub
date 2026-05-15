@@ -98,9 +98,11 @@ test.describe('grocery', () => {
 		// Same name + same store (Unassigned in both cases) → bump amount.
 		await input.fill('Apples');
 		await input.press('Enter');
+		// Toast has a fixed 2.4s lifetime — assert it first so we don't
+		// miss it while waiting on the row to repaint after invalidateAll.
+		await expect(page.getByTestId('grocery-toast')).toBeVisible();
 		await expect(row).toHaveCount(1);
 		await expect(row).toContainText('× 2');
-		await expect(page.getByTestId('grocery-toast')).toBeVisible();
 	});
 
 	test('amount stepper applies the input amount on add', async ({ page }) => {

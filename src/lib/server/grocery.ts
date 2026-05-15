@@ -36,27 +36,40 @@ export async function markPurchased(
 	purchasedById: number | null = null,
 	now = Date.now()
 ): Promise<GroceryItem | null> {
-	const [item] = await db
-		.select()
-		.from(groceryItems)
-		.where(eq(groceryItems.id, itemId))
-		.limit(1);
-	if (!item) return null;
-	const stamp = new Date(now);
-	const [updated] = await db
-		.update(groceryItems)
-		.set({ lastPurchasedAt: stamp })
-		.where(eq(groceryItems.id, itemId))
-		.returning();
-	await db.insert(groceryPurchases).values({
-		groceryItemId: item.id,
-		nameSnapshot: item.name,
-		storeId: item.storeId,
-		amount: item.amount,
-		purchasedAt: stamp,
-		purchasedById
+	// Wrap the read+update+insert as one unit so a crash mid-flight can't
+	// leave the item flagged purchased without a history row (or vice
+	// versa). better-sqlite3's transaction is synchronous, so we use the
+	// terminal `.get()` / `.run()` methods instead of awaiting the
+	// query-builder thenables — an async transaction callback would
+	// commit before the awaits resolved and the writes would land
+	// outside the transaction.
+	return db.transaction((tx) => {
+		const item = tx
+			.select()
+			.from(groceryItems)
+			.where(eq(groceryItems.id, itemId))
+			.limit(1)
+			.get();
+		if (!item) return null;
+		const stamp = new Date(now);
+		const updated = tx
+			.update(groceryItems)
+			.set({ lastPurchasedAt: stamp })
+			.where(eq(groceryItems.id, itemId))
+			.returning()
+			.get();
+		tx.insert(groceryPurchases)
+			.values({
+				groceryItemId: item.id,
+				nameSnapshot: item.name,
+				storeId: item.storeId,
+				amount: item.amount,
+				purchasedAt: stamp,
+				purchasedById
+			})
+			.run();
+		return updated ?? null;
 	});
-	return updated ?? null;
 }
 
 /**
@@ -69,29 +82,36 @@ export async function undoPurchase(
 	itemId: number,
 	now = Date.now()
 ): Promise<GroceryItem | null> {
-	const [item] = await db
-		.select()
-		.from(groceryItems)
-		.where(eq(groceryItems.id, itemId))
-		.limit(1);
-	if (!item || !item.lastPurchasedAt) return item ?? null;
-	const cutoff = new Date(now - PURCHASE_UNDO_WINDOW_MS);
-	if (item.lastPurchasedAt < cutoff) return item;
-	const [latest] = await db
-		.select({ id: groceryPurchases.id })
-		.from(groceryPurchases)
-		.where(eq(groceryPurchases.groceryItemId, itemId))
-		.orderBy(desc(groceryPurchases.purchasedAt))
-		.limit(1);
-	if (latest) {
-		await db.delete(groceryPurchases).where(eq(groceryPurchases.id, latest.id));
-	}
-	const [updated] = await db
-		.update(groceryItems)
-		.set({ lastPurchasedAt: null })
-		.where(eq(groceryItems.id, itemId))
-		.returning();
-	return updated ?? null;
+	// One transaction so the item-row clear and the history-row delete
+	// can't drift apart on a crash. Synchronous body — see markPurchased.
+	return db.transaction((tx) => {
+		const item = tx
+			.select()
+			.from(groceryItems)
+			.where(eq(groceryItems.id, itemId))
+			.limit(1)
+			.get();
+		if (!item || !item.lastPurchasedAt) return item ?? null;
+		const cutoff = new Date(now - PURCHASE_UNDO_WINDOW_MS);
+		if (item.lastPurchasedAt < cutoff) return item;
+		const latest = tx
+			.select({ id: groceryPurchases.id })
+			.from(groceryPurchases)
+			.where(eq(groceryPurchases.groceryItemId, itemId))
+			.orderBy(desc(groceryPurchases.purchasedAt))
+			.limit(1)
+			.get();
+		if (latest) {
+			tx.delete(groceryPurchases).where(eq(groceryPurchases.id, latest.id)).run();
+		}
+		const updated = tx
+			.update(groceryItems)
+			.set({ lastPurchasedAt: null })
+			.where(eq(groceryItems.id, itemId))
+			.returning()
+			.get();
+		return updated ?? null;
+	});
 }
 
 export type AddItemMode = 'created' | 'merged' | 'flipped';
@@ -122,77 +142,90 @@ export async function addOrFlipItem(
 	const addAmount = Math.max(1, Math.floor(opts.amount ?? 1));
 	const storeId = opts.storeId ?? null;
 
-	// Active-list dedup: same name + same store (including both-null)
-	// bumps the existing row's amount instead of creating a duplicate.
-	const storeMatch =
-		storeId == null
-			? isNull(groceryItems.storeId)
-			: eq(groceryItems.storeId, storeId);
-	const [active] = await db
-		.select()
-		.from(groceryItems)
-		.where(
-			and(
-				sql`lower(${groceryItems.name}) = lower(${trimmed})`,
-				isNull(groceryItems.lastPurchasedAt),
-				storeMatch
-			)
-		)
-		.limit(1);
-	if (active) {
-		const [merged] = await db
-			.update(groceryItems)
-			.set({ amount: active.amount + addAmount })
-			.where(eq(groceryItems.id, active.id))
-			.returning();
-		return merged ? { item: merged, mode: 'merged' } : null;
-	}
+	// One transaction across the three branches so the match-check and
+	// the write commit (or roll back) together — and so the flip-back
+	// path's history-delete + item-update can't half-apply on a crash.
+	// Synchronous body — see markPurchased for the why.
+	return db.transaction((tx) => {
+		const storeMatch =
+			storeId == null
+				? isNull(groceryItems.storeId)
+				: eq(groceryItems.storeId, storeId);
 
-	// Flip-back: same name + same store on a recently-purchased row →
-	// revive it. The store match matters here too — buying milk at
-	// Costco shouldn't be cancelled by a Super 1 milk add 3h later;
-	// those are different items.
-	const cutoff = new Date(now - PURCHASE_UNDO_WINDOW_MS);
-	const [recent] = await db
-		.select()
-		.from(groceryItems)
-		.where(
-			and(
-				sql`lower(${groceryItems.name}) = lower(${trimmed})`,
-				isNotNull(groceryItems.lastPurchasedAt),
-				gt(groceryItems.lastPurchasedAt, cutoff),
-				storeMatch
+		// Active-list dedup: same name + same store (including both-null)
+		// bumps the existing row's amount instead of creating a duplicate.
+		const active = tx
+			.select()
+			.from(groceryItems)
+			.where(
+				and(
+					sql`lower(${groceryItems.name}) = lower(${trimmed})`,
+					isNull(groceryItems.lastPurchasedAt),
+					storeMatch
+				)
 			)
-		)
-		.limit(1);
-	if (recent) {
-		const [latest] = await db
-			.select({ id: groceryPurchases.id })
-			.from(groceryPurchases)
-			.where(eq(groceryPurchases.groceryItemId, recent.id))
-			.orderBy(desc(groceryPurchases.purchasedAt))
-			.limit(1);
-		if (latest) {
-			await db.delete(groceryPurchases).where(eq(groceryPurchases.id, latest.id));
+			.limit(1)
+			.get();
+		if (active) {
+			const merged = tx
+				.update(groceryItems)
+				.set({ amount: active.amount + addAmount })
+				.where(eq(groceryItems.id, active.id))
+				.returning()
+				.get();
+			return merged ? { item: merged, mode: 'merged' as const } : null;
 		}
-		const [flipped] = await db
-			.update(groceryItems)
-			.set({ lastPurchasedAt: null })
-			.where(eq(groceryItems.id, recent.id))
-			.returning();
-		return flipped ? { item: flipped, mode: 'flipped' } : null;
-	}
 
-	const [created] = await db
-		.insert(groceryItems)
-		.values({
-			name: trimmed,
-			storeId,
-			amount: addAmount,
-			addedById: opts.addedById ?? null
-		})
-		.returning();
-	return created ? { item: created, mode: 'created' } : null;
+		// Flip-back: same name + same store on a recently-purchased row →
+		// revive it. The store match matters here too — buying milk at
+		// Costco shouldn't be cancelled by a Super 1 milk add 3h later;
+		// those are different items.
+		const cutoff = new Date(now - PURCHASE_UNDO_WINDOW_MS);
+		const recent = tx
+			.select()
+			.from(groceryItems)
+			.where(
+				and(
+					sql`lower(${groceryItems.name}) = lower(${trimmed})`,
+					isNotNull(groceryItems.lastPurchasedAt),
+					gt(groceryItems.lastPurchasedAt, cutoff),
+					storeMatch
+				)
+			)
+			.limit(1)
+			.get();
+		if (recent) {
+			const latest = tx
+				.select({ id: groceryPurchases.id })
+				.from(groceryPurchases)
+				.where(eq(groceryPurchases.groceryItemId, recent.id))
+				.orderBy(desc(groceryPurchases.purchasedAt))
+				.limit(1)
+				.get();
+			if (latest) {
+				tx.delete(groceryPurchases).where(eq(groceryPurchases.id, latest.id)).run();
+			}
+			const flipped = tx
+				.update(groceryItems)
+				.set({ lastPurchasedAt: null })
+				.where(eq(groceryItems.id, recent.id))
+				.returning()
+				.get();
+			return flipped ? { item: flipped, mode: 'flipped' as const } : null;
+		}
+
+		const created = tx
+			.insert(groceryItems)
+			.values({
+				name: trimmed,
+				storeId,
+				amount: addAmount,
+				addedById: opts.addedById ?? null
+			})
+			.returning()
+			.get();
+		return created ? { item: created, mode: 'created' as const } : null;
+	});
 }
 
 export type RecentPurchase = {

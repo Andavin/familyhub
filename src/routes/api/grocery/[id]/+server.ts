@@ -38,7 +38,23 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		}
 		update.amount = Math.floor(body.amount);
 	}
-	if (body.storeId !== undefined) update.storeId = body.storeId;
+	if (body.storeId !== undefined) {
+		// Defensive coerce: Svelte 5's `bind:value` on a <select> preserves
+		// the option's JS value type (so this is already number | null in
+		// practice), but the route is a public surface — a direct API
+		// caller could pass a string. Accept null, a number, or a numeric
+		// string; reject anything else.
+		const raw = body.storeId;
+		if (raw === null) {
+			update.storeId = null;
+		} else if (typeof raw === 'number' && Number.isFinite(raw)) {
+			update.storeId = raw;
+		} else if (typeof raw === 'string' && raw !== '' && Number.isFinite(Number(raw))) {
+			update.storeId = Number(raw);
+		} else {
+			throw error(400, 'storeId must be a number or null');
+		}
+	}
 
 	let row: typeof groceryItems.$inferSelect | undefined;
 	if (Object.keys(update).length > 0) {
