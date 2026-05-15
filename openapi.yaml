@@ -32,10 +32,19 @@ info:
       `{ "error": "..." }`. No exceptions.
     - **DELETE responses are uniform**: every DELETE returns
       `200 { "ok": true }` on success.
-    - The server validates inputs at the route layer so the client
-      gets a clear `{ "error": "..." }` message instead of a 500 for
-      common mistakes (malformed ISO timestamps, out-of-range
-      priorities, etc.).
+    - **4xx vs 5xx contract**: 4xx errors carry a specific,
+      actionable message naming the field the client should fix
+      (e.g. `"dueAt is not a valid ISO-8601 timestamp"`). 5xx
+      responses are server bugs — they return a generic
+      `{ "error": "internal server error", "errorId": "..." }`
+      without leaking implementation details. The `errorId` is
+      logged server-side so a report can be traced back to the
+      stack.
+    - The server validates inputs at the route layer so common
+      client mistakes (malformed dates, out-of-range priorities,
+      etc.) reliably surface as 4xx — a 5xx should never be
+      caused by something the client could fix by changing its
+      payload.
 
 servers:
   - url: '{scheme}://{host}'
@@ -1297,10 +1306,19 @@ components:
   schemas:
     Error:
       type: object
-      description: Uniform error body for every 4xx and 5xx response.
+      description: |
+        Uniform error body for every 4xx and 5xx response.
+        - 4xx: `error` names the specific problem ("dueAt is not
+          a valid ISO-8601 timestamp", "name required", etc.).
+        - 5xx: `error` is a generic "internal server error" and
+          `errorId` is a short tag that matches a server-side
+          log entry — quote it when reporting bugs.
       required: [error]
       properties:
         error: { type: string }
+        errorId:
+          type: string
+          description: 'Present only on 500 responses; correlates with a server log entry.'
 
     User:
       type: object

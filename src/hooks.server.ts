@@ -1,6 +1,6 @@
 import type { Handle, HandleServerError } from '@sveltejs/kit';
+import { randomBytes } from 'node:crypto';
 import { SESSION_COOKIE, validateSession } from '$lib/server/auth';
-import { describeError } from '$lib/server/api-error';
 
 const PUBLIC_ROUTES = ['/login', '/api/login', '/manifest.webmanifest', '/favicon.svg'];
 
@@ -33,20 +33,24 @@ export const handle: Handle = async ({ event, resolve }) => {
 };
 
 /**
- * Last-resort transform for anything an `/api/*` route didn't catch
- * itself. Pins the body shape to `{ error: ... }` regardless of the
- * underlying cause so clients never see a default SvelteKit
- * `{message}` payload on an unexpected failure.
+ * Last-resort handler for anything a route didn't catch itself.
  *
- * Note: SvelteKit doesn't let `handleError` change the status code —
- * unhandled exceptions stay as 500. Each route is therefore
- * responsible for catching constraint violations (UNIQUE, FK, etc.)
- * and re-throwing as `apiError(400, ...)` so the caller gets a real
- * 4xx instead.
+ * Policy: a 500 means the server failed in a way the client can't
+ * remediate. The full details (message, stack, request) are logged
+ * server-side under a short `errorId` so we can find them later; the
+ * client only sees `{ error: "internal server error", errorId }`.
+ * No stack traces, no SQL, no internals.
+ *
+ * Validation, constraint-handling, and user-fixable mistakes are
+ * supposed to come back as 4xx from `apiError(...)` inside the
+ * routes — anything reaching this hook is a server bug we need to
+ * fix, not something the client should debug.
  */
-export const handleError: HandleServerError = ({ error }) => {
-	if (error instanceof Error) {
-		return { error: describeError(error) };
-	}
-	return { error: 'internal error' };
+export const handleError: HandleServerError = ({ error, event }) => {
+	const errorId = randomBytes(6).toString('hex');
+	console.error(
+		`[handleError] errorId=${errorId} ${event.request.method} ${event.url.pathname}`,
+		error
+	);
+	return { error: 'internal server error', errorId };
 };
