@@ -1,9 +1,10 @@
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { tasks, taskCompletions } from '$lib/server/schema';
 import { eq, desc } from 'drizzle-orm';
 import { nextOccurrence } from '$lib/server/recurrence';
+import { apiError } from '$lib/server/api-error';
 
 /**
  * Apple-Reminders-style complete/uncomplete.
@@ -29,17 +30,17 @@ import { nextOccurrence } from '$lib/server/recurrence';
  */
 export const POST: RequestHandler = async ({ params, request }) => {
 	const id = Number(params.id);
-	if (!Number.isFinite(id)) throw error(400, 'invalid id');
+	if (!Number.isFinite(id)) apiError(400, 'invalid id');
 	const body = (await request.json().catch(() => ({}))) as {
 		action?: 'complete' | 'uncomplete';
 		completedById?: number | null;
 	};
 	if (body.action !== 'complete' && body.action !== 'uncomplete') {
-		throw error(400, 'action must be "complete" or "uncomplete"');
+		apiError(400, 'action must be "complete" or "uncomplete"');
 	}
 
 	const [task] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
-	if (!task) throw error(404, 'not found');
+	if (!task) apiError(404, 'not found');
 
 	// If the caller didn't say who completed it, default to the task's
 	// assignee. The kiosk UI sends an explicit `completedById` for
@@ -67,7 +68,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			update.completedBy = null;
 		}
 		const [row] = await db.update(tasks).set(update).where(eq(tasks.id, id)).returning();
-		return json({ task: row });
+		return json(row);
 	}
 
 	// === COMPLETE ===
@@ -96,7 +97,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			update.completedBy = completedBy;
 		}
 		const [row] = await db.update(tasks).set(update).where(eq(tasks.id, id)).returning();
-		return json({ task: row });
+		return json(row);
 	}
 
 	const [row] = await db
@@ -104,5 +105,5 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		.set({ completedAt: now, completedBy, updatedAt: now })
 		.where(eq(tasks.id, id))
 		.returning();
-	return json({ task: row });
+	return json(row);
 };

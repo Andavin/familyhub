@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { users, lists } from '$lib/server/schema';
 import { asc, max } from 'drizzle-orm';
+import { apiError } from '$lib/server/api-error';
 
 export const GET: RequestHandler = async () => {
 	const rows = await db.select().from(users).orderBy(asc(users.displayOrder));
@@ -10,14 +11,14 @@ export const GET: RequestHandler = async () => {
 };
 
 export const POST: RequestHandler = async ({ request }) => {
-	const body = (await request.json()) as {
-		name: string;
+	const body = (await request.json().catch(() => ({}))) as {
+		name?: string;
 		color?: string;
 		emoji?: string;
 		displayOrder?: number;
-		createList?: boolean; // defaults to true
+		createList?: boolean;
 	};
-	if (!body.name) return json({ error: 'name required' }, { status: 400 });
+	if (!body.name?.trim()) apiError(400, 'name required');
 
 	let displayOrder = body.displayOrder;
 	if (displayOrder === undefined) {
@@ -28,7 +29,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const [user] = await db
 		.insert(users)
 		.values({
-			name: body.name,
+			name: body.name.trim(),
 			color: body.color ?? 'blue',
 			emoji: body.emoji ?? '🙂',
 			displayOrder

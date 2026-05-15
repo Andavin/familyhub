@@ -9,6 +9,7 @@ import {
 	familyPassword,
 	recordLoginFailure
 } from '$lib/server/auth';
+import { apiError } from '$lib/server/api-error';
 import { timingSafeEqual } from 'node:crypto';
 
 function safeEqual(a: string, b: string): boolean {
@@ -31,7 +32,7 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 	const body = (await request.json().catch(() => ({}))) as { password?: string };
 	if (!body.password || !safeEqual(body.password, familyPassword())) {
 		recordLoginFailure(ip);
-		return json({ error: 'invalid password' }, { status: 401 });
+		apiError(401, 'invalid password');
 	}
 	clearLoginFailures(ip);
 

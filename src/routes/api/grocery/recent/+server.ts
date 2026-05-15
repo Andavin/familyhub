@@ -1,9 +1,17 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { recentPurchases } from '$lib/server/grocery';
+import { apiError } from '$lib/server/api-error';
 
 export const GET: RequestHandler = async ({ url }) => {
-	const daysRaw = Number(url.searchParams.get('days'));
-	const days = Number.isFinite(daysRaw) && daysRaw > 0 ? daysRaw : 30;
+	const raw = url.searchParams.get('days');
+	let days = 30;
+	if (raw !== null) {
+		const n = Number(raw);
+		if (!Number.isFinite(n) || n <= 0) {
+			apiError(400, 'days must be a positive number');
+		}
+		days = n;
+	}
 	return json(await recentPurchases(days));
 };

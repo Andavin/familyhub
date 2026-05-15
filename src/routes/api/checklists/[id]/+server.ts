@@ -1,15 +1,16 @@
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { checklists } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import type { ChecklistItem } from '$lib/server/schema';
 import { setChecklistTags } from '$lib/server/tags';
+import { apiError } from '$lib/server/api-error';
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const id = Number(params.id);
-	if (!Number.isFinite(id)) throw error(400, 'invalid id');
-	const body = (await request.json()) as Partial<{
+	if (!Number.isFinite(id)) apiError(400, 'invalid id');
+	const body = (await request.json().catch(() => ({}))) as Partial<{
 		name: string;
 		description: string;
 		emoji: string;
@@ -18,6 +19,17 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		defaultDueTime: string | null;
 		defaultTagIds: number[];
 	}>;
+	if (
+		body.defaultPriority !== undefined &&
+		(!Number.isInteger(body.defaultPriority) ||
+			body.defaultPriority < 0 ||
+			body.defaultPriority > 3)
+	) {
+		apiError(400, 'defaultPriority must be 0, 1, 2, or 3');
+	}
+	if (body.items !== undefined && !Array.isArray(body.items)) {
+		apiError(400, 'items must be an array');
+	}
 
 	const update: Record<string, unknown> = {};
 	if ('name' in body) update.name = body.name;
@@ -33,7 +45,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	} else {
 		[row] = await db.select().from(checklists).where(eq(checklists.id, id)).limit(1);
 	}
-	if (!row) throw error(404, 'not found');
+	if (!row) apiError(404, 'not found');
 
 	if (Array.isArray(body.defaultTagIds)) {
 		await setChecklistTags(id, body.defaultTagIds);
@@ -44,7 +56,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 export const DELETE: RequestHandler = async ({ params }) => {
 	const id = Number(params.id);
-	if (!Number.isFinite(id)) throw error(400, 'invalid id');
+	if (!Number.isFinite(id)) apiError(400, 'invalid id');
 	await db.delete(checklists).where(eq(checklists.id, id));
 	return json({ ok: true });
 };

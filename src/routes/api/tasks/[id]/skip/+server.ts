@@ -1,9 +1,10 @@
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { tasks } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import { nextOccurrence } from '$lib/server/recurrence';
+import { apiError } from '$lib/server/api-error';
 
 /**
  * Skip the current occurrence of a recurring task without logging a
@@ -15,11 +16,11 @@ import { nextOccurrence } from '$lib/server/recurrence';
  */
 export const POST: RequestHandler = async ({ params }) => {
 	const id = Number(params.id);
-	if (!Number.isFinite(id)) throw error(400, 'invalid id');
+	if (!Number.isFinite(id)) apiError(400, 'invalid id');
 
 	const [task] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
-	if (!task) throw error(404, 'not found');
-	if (!task.rrule) throw error(400, 'task is not recurring');
+	if (!task) apiError(404, 'not found');
+	if (!task.rrule) apiError(400, 'task is not recurring');
 
 	const next = nextOccurrence(task.rrule, task.dueAt ?? new Date());
 	if (!next) {
@@ -32,5 +33,5 @@ export const POST: RequestHandler = async ({ params }) => {
 		.set({ dueAt: next, updatedAt: new Date() })
 		.where(eq(tasks.id, id))
 		.returning();
-	return json({ task: row });
+	return json(row);
 };
