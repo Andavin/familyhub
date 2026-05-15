@@ -36,7 +36,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			.orderBy(asc(tasks.dueAt)),
 		loadDoneEntries(gridStart),
 		db.select().from(calendarFeeds).orderBy(asc(calendarFeeds.id)),
-		listTags(),
+		listTags('task'),
 		loadTaskTagMap()
 	]);
 

@@ -140,7 +140,7 @@ export async function applyChecklist(checklistId: number, opts: ApplyChecklistOp
 		// Caller-supplied IDs may be stale or hostile — drop unknowns
 		// before the join-table insert so one bad ID doesn't FK-fail
 		// the whole apply.
-		const validTagIds = await tagsExist(tagIds);
+		const validTagIds = await tagsExist(tagIds, 'task');
 		if (validTagIds.length > 0) {
 			const rows = inserted.flatMap((t) =>
 				validTagIds.map((tagId) => ({ taskId: t.id, tagId }))

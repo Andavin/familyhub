@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Tag } from '$lib/server/schema';
+	import type { Tag, TagScope } from '$lib/server/schema';
 
 	type Props = {
 		tags: Tag[];
@@ -7,8 +7,11 @@
 		onchange: (ids: number[]) => void;
 		/** Called when a new tag is created via the inline "+ Add". */
 		oncreated?: (tag: Tag) => void;
+		/** Which surface this picker creates tags for. Defaults to 'task' to
+		 * preserve the historical behavior of existing call sites. */
+		scope?: TagScope;
 	};
-	let { tags, selectedIds, onchange, oncreated }: Props = $props();
+	let { tags, selectedIds, onchange, oncreated, scope = 'task' }: Props = $props();
 
 	let input = $state('');
 	let creating = $state(false);
@@ -37,7 +40,7 @@
 			const res = await fetch('/api/tags', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ name })
+				body: JSON.stringify({ name, scope })
 			});
 			if (!res.ok) return;
 			const tag = (await res.json()) as Tag;
