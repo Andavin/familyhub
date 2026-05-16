@@ -4,19 +4,8 @@ import { db } from '$lib/server/db';
 import { tasks } from '$lib/server/schema';
 import { asc, eq, isNull, and } from 'drizzle-orm';
 import { apiError } from '$lib/server/api-error';
+import { parseDateField } from '$lib/server/parse';
 import { setTaskTags } from '$lib/server/tags';
-
-function parseDate(value: unknown, field: string): Date | null {
-	if (value === null || value === undefined) return null;
-	if (typeof value !== 'string') {
-		apiError(400, `${field} must be an ISO-8601 string or null`);
-	}
-	const d = new Date(value);
-	if (Number.isNaN(d.getTime())) {
-		apiError(400, `${field} is not a valid ISO-8601 timestamp`);
-	}
-	return d;
-}
 
 export const GET: RequestHandler = async ({ url }) => {
 	const includeCompleted = url.searchParams.get('includeCompleted') === 'true';
@@ -67,7 +56,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		apiError(400, 'tagIds must be an array of numbers');
 	}
 
-	const dueAt = parseDate(body.dueAt, 'dueAt');
+	const dueAt = parseDateField(body.dueAt, 'dueAt');
 
 	const [row] = await db
 		.insert(tasks)

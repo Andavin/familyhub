@@ -6,18 +6,7 @@ import { eq } from 'drizzle-orm';
 import { getOrCreateInbox, firstOwnedList, INBOX_SYSTEM } from '$lib/server/inbox';
 import { setTaskTags } from '$lib/server/tags';
 import { apiError } from '$lib/server/api-error';
-
-function parseDate(value: unknown, field: string): Date | null {
-	if (value === null || value === undefined) return null;
-	if (typeof value !== 'string') {
-		apiError(400, `${field} must be an ISO-8601 string or null`);
-	}
-	const d = new Date(value);
-	if (Number.isNaN(d.getTime())) {
-		apiError(400, `${field} is not a valid ISO-8601 timestamp`);
-	}
-	return d;
-}
+import { parseDateField } from '$lib/server/parse';
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const id = Number(params.id);
@@ -54,7 +43,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	if ('notes' in body) update.notes = body.notes;
 	if ('assigneeId' in body) update.assigneeId = body.assigneeId;
 	if ('listId' in body) update.listId = body.listId;
-	if ('dueAt' in body) update.dueAt = parseDate(body.dueAt, 'dueAt');
+	if ('dueAt' in body) update.dueAt = parseDateField(body.dueAt, 'dueAt');
 	if ('dueHasTime' in body) update.dueHasTime = body.dueHasTime;
 	if ('rrule' in body) update.rrule = body.rrule;
 	if ('recurFromCompletion' in body) update.recurFromCompletion = !!body.recurFromCompletion;
