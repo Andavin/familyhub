@@ -19,24 +19,24 @@
   "dependencies": {
     "@sveltejs/adapter-node": "^5.5.4",
     "@sveltejs/kit": "^2.60.1",
-    "better-sqlite3": "^11.10.0",
-    "drizzle-orm": "^0.36.4",
+    "better-sqlite3": "^12.10.0",
+    "drizzle-orm": "^0.45.2",
     "rrule": "^2.8.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
-    "@sveltejs/vite-plugin-svelte": "^5.1.1",
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tailwindcss/vite": "^4.3.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.12.4",
-    "drizzle-kit": "^0.28.1",
+    "drizzle-kit": "^0.31.10",
     "svelte": "^5.55.7",
     "svelte-check": "^4.4.8",
     "tailwindcss": "^4.3.0",
     "tsx": "^4.22.0",
-    "typescript": "^5.9.3",
-    "vite": "^6.4.2",
-    "vitest": "^2.1.9"
+    "typescript": "^6.0.3",
+    "vite": "^8.0.13",
+    "vitest": "^4.1.6"
   },
   "packageManager": "pnpm@10.33.1",
   "pnpm": {
