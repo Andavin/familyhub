@@ -70,7 +70,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=Family Hub
             org.opencontainers.image.description=Self-hosted family kiosk (tasks, calendar, groceries)
-            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.licenses=Apache-2.0
 
       - name: Build and push
         uses: docker/build-push-action@v6

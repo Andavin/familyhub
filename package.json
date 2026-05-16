@@ -3,6 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "description": "Self-hosted family kiosk — tasks, calendar, groceries.",
+  "license": "Apache-2.0",
+  "author": "Mark Vogel <mark@andavin.com>",
+  "homepage": "https://github.com/Andavin/familyhub#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Andavin/familyhub.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Andavin/familyhub/issues"
+  },
   "scripts": {
     "dev": "vite dev --host 0.0.0.0",
     "build": "vite build",

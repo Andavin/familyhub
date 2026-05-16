@@ -2,6 +2,9 @@ openapi: 3.0.3
 info:
   title: Family Hub API
   version: '1.0.0'
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
   description: |
     HTTP API for the Family Hub kiosk app. All endpoints are JSON in
     and JSON out unless noted. Authentication is a single shared
@@ -15,7 +18,7 @@ info:
        `Secure` when the server is running with `NODE_ENV=production`).
     2. Send the cookie back on subsequent requests. SvelteKit's
        `hooks.server.ts` rejects any unauthenticated `/api/*` request
-       with `401 { "error": "unauthorized" }`.
+       with `401 { "message": "unauthorized", "error": "unauthorized" }`.
     3. `DELETE /api/login` to invalidate the session.
 
     External clients (e.g. Node-RED) should call `POST /api/login`
@@ -29,14 +32,17 @@ info:
       since epoch internally.
     - IDs are positive integers.
     - **Error shape is uniform**: every 4xx / 5xx response has body
-      `{ "error": "..." }`. No exceptions.
+      `{ "message": "...", "error": "..." }` (both fields hold the
+      same string — `error` is the canonical field; `message`
+      mirrors it to satisfy SvelteKit's `App.Error` contract).
+      No exceptions.
     - **DELETE responses are uniform**: every DELETE returns
       `200 { "ok": true }` on success.
     - **4xx vs 5xx contract**: 4xx errors carry a specific,
       actionable message naming the field the client should fix
       (e.g. `"dueAt is not a valid ISO-8601 timestamp"`). 5xx
       responses are server bugs — they return a generic
-      `{ "error": "internal server error", "errorId": "..." }`
+      `{ "message": "internal server error", "error": "internal server error", "errorId": "..." }`
       without leaking implementation details. The `errorId` is
       logged server-side so a report can be traced back to the
       stack.

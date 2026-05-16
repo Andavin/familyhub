@@ -18,7 +18,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	if (!authed && !isPublic) {
 		if (path.startsWith('/api/')) {
-			return new Response(JSON.stringify({ error: 'unauthorized' }), {
+			return new Response(JSON.stringify({ message: 'unauthorized', error: 'unauthorized' }), {
 				status: 401,
 				headers: { 'content-type': 'application/json' }
 			});

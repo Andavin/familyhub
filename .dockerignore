@@ -18,4 +18,4 @@ package-lock.json
 yarn.lock
 README.md
 openapi.yaml
-COMPOSE_SNIPPET.yml
+compose.example.yml
