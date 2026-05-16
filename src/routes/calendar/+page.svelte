@@ -925,7 +925,7 @@
 		text-align: left;
 		padding: 0.4rem 0.6rem;
 		border-radius: 0.4rem;
-		background: color-mix(in srgb, var(--pc) 18%, white);
+		background: color-mix(in srgb, var(--pc) 18%, transparent);
 		border-left: 3px solid var(--pc);
 		font-size: 0.88rem;
 		line-height: 1.25;
@@ -933,7 +933,7 @@
 		cursor: pointer;
 	}
 	.event-block:hover {
-		background: color-mix(in srgb, var(--pc) 28%, white);
+		background: color-mix(in srgb, var(--pc) 28%, transparent);
 	}
 	.event-title {
 		display: block;
