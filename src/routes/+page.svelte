@@ -208,6 +208,27 @@
 		await invalidateAll();
 	}
 
+	// Position of each list within the rendered column order; used to
+	// gate the disabled state on the move-left/right buttons. The inbox
+	// is included — its system marker only protects delete + picker
+	// exclusion, not ordering.
+	const listIdxById = $derived(new Map(data.lists.map((l, i) => [l.id, i])));
+
+	async function moveList(listId: number, direction: 'left' | 'right') {
+		const idx = listIdxById.get(listId);
+		if (idx === undefined) return;
+		const target = direction === 'left' ? idx - 1 : idx + 1;
+		if (target < 0 || target >= data.lists.length) return;
+		const reordered = [...data.lists];
+		[reordered[idx], reordered[target]] = [reordered[target], reordered[idx]];
+		await fetch('/api/lists', {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ orderedIds: reordered.map((l) => l.id) })
+		});
+		await invalidateAll();
+	}
+
 	function openListEdit(list: List | null) {
 		listBeingEdited = list;
 		listModalOpen = true;
@@ -324,6 +345,7 @@
 		{@const done = col.done}
 		{@const isDoneOpen = !!expandedDone[col.list.id]}
 		{@const isScheduledOpen = !!expandedScheduled[col.list.id]}
+		{@const li = listIdxById.get(col.list.id) ?? -1}
 		<article
 			class="column"
 			style="--c: {colorVar(col.list.color)}"
@@ -333,6 +355,26 @@
 				<span class="dot"></span>
 				<span class="col-title">{col.list.name}</span>
 				<span class="col-count">{today.length}</span>
+				<button
+					class="col-move"
+					aria-label="Move list left"
+					title="Move list left"
+					disabled={li <= 0}
+					onclick={() => moveList(col.list.id, 'left')}
+					data-testid="move-list-left-{col.list.id}"
+				>
+					‹
+				</button>
+				<button
+					class="col-move"
+					aria-label="Move list right"
+					title="Move list right"
+					disabled={li < 0 || li >= data.lists.length - 1}
+					onclick={() => moveList(col.list.id, 'right')}
+					data-testid="move-list-right-{col.list.id}"
+				>
+					›
+				</button>
 				<button
 					class="col-edit"
 					aria-label="Edit list"
@@ -717,6 +759,19 @@
 	}
 	.col-edit:hover {
 		color: var(--color-ink);
+	}
+	.col-move {
+		padding: 0 0.4rem;
+		font-size: 1.2rem;
+		color: var(--color-muted);
+		line-height: 1;
+	}
+	.col-move:hover:not(:disabled) {
+		color: var(--color-ink);
+	}
+	.col-move:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
 	}
 	.col-body {
 		flex: 1;
