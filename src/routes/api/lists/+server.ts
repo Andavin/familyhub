@@ -3,6 +3,9 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { lists } from '$lib/server/schema';
 import { asc, max } from 'drizzle-orm';
+import { apiError } from '$lib/server/api-error';
+
+const VALID_KINDS = new Set(['chores', 'grocery', 'general']);
 
 export const GET: RequestHandler = async () => {
 	const rows = await db.select().from(lists).orderBy(asc(lists.displayOrder));
@@ -10,14 +13,17 @@ export const GET: RequestHandler = async () => {
 };
 
 export const POST: RequestHandler = async ({ request }) => {
-	const body = (await request.json()) as {
-		name: string;
+	const body = (await request.json().catch(() => ({}))) as {
+		name?: string;
 		color?: string;
 		ownerId?: number | null;
 		kind?: 'chores' | 'grocery' | 'general';
 		displayOrder?: number;
 	};
-	if (!body.name) return json({ error: 'name required' }, { status: 400 });
+	if (!body.name?.trim()) apiError(400, 'name required');
+	if (body.kind !== undefined && !VALID_KINDS.has(body.kind)) {
+		apiError(400, 'kind must be "chores", "grocery", or "general"');
+	}
 	let displayOrder = body.displayOrder;
 	if (displayOrder === undefined) {
 		const [{ value }] = await db.select({ value: max(lists.displayOrder) }).from(lists);
@@ -26,7 +32,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const [row] = await db
 		.insert(lists)
 		.values({
-			name: body.name,
+			name: body.name.trim(),
 			color: body.color ?? 'blue',
 			ownerId: body.ownerId ?? null,
 			kind: body.kind ?? 'chores',

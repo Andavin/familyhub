@@ -1,0 +1,1514 @@
+openapi: 3.0.3
+info:
+  title: Family Hub API
+  version: '1.0.0'
+  description: |
+    HTTP API for the Family Hub kiosk app. All endpoints are JSON in
+    and JSON out unless noted. Authentication is a single shared
+    family password that produces a session cookie (`fh_session`),
+    which every other endpoint requires.
+
+    ## Authentication
+
+    1. `POST /api/login` with `{ "password": "..." }` to receive a
+       `fh_session` cookie (60-day lifetime, `HttpOnly`, `SameSite=Lax`,
+       `Secure` when the server is running with `NODE_ENV=production`).
+    2. Send the cookie back on subsequent requests. SvelteKit's
+       `hooks.server.ts` rejects any unauthenticated `/api/*` request
+       with `401 { "error": "unauthorized" }`.
+    3. `DELETE /api/login` to invalidate the session.
+
+    External clients (e.g. Node-RED) should call `POST /api/login`
+    once at startup, capture the `Set-Cookie` header, and replay it
+    on every subsequent request. The login endpoint is the only
+    public route under `/api/*`.
+
+    ## Conventions
+
+    - All timestamps are ISO-8601 strings on the wire. Stored as ms
+      since epoch internally.
+    - IDs are positive integers.
+    - **Error shape is uniform**: every 4xx / 5xx response has body
+      `{ "error": "..." }`. No exceptions.
+    - **DELETE responses are uniform**: every DELETE returns
+      `200 { "ok": true }` on success.
+    - **4xx vs 5xx contract**: 4xx errors carry a specific,
+      actionable message naming the field the client should fix
+      (e.g. `"dueAt is not a valid ISO-8601 timestamp"`). 5xx
+      responses are server bugs — they return a generic
+      `{ "error": "internal server error", "errorId": "..." }`
+      without leaking implementation details. The `errorId` is
+      logged server-side so a report can be traced back to the
+      stack.
+    - The server validates inputs at the route layer so common
+      client mistakes (malformed dates, out-of-range priorities,
+      etc.) reliably surface as 4xx — a 5xx should never be
+      caused by something the client could fix by changing its
+      payload.
+
+servers:
+  - url: '{scheme}://{host}'
+    description: Family Hub instance
+    variables:
+      scheme:
+        default: https
+        enum: [http, https]
+      host:
+        default: localhost:4173
+        description: Host + port. Use the address you expose the kiosk on.
+
+security:
+  - cookieAuth: []
+
+tags:
+  - name: Auth
+    description: Session login / logout. Public; everything else needs the resulting cookie.
+  - name: Users
+    description: Family members (assignees of tasks).
+  - name: Lists
+    description: 'Task lists. Each user typically owns one ("Alex''s Tasks"); shared lists have `ownerId: null`.'
+  - name: Tasks
+    description: |
+      The primary surface for chores and reminders. Recurring tasks
+      use a single row whose `dueAt` advances on completion — the
+      app never stacks multiple rows for the same series.
+  - name: Tags
+    description: |
+      Apple-Reminders-style tags. Scoped to either `task` (used by
+      tasks and checklists) or `grocery` (used by grocery items).
+      Same name in each scope is two separate rows.
+  - name: Checklists
+    description: Reusable templates that spawn a batch of tasks across lists.
+  - name: Calendars
+    description: External iCal subscription URLs surfaced read-only on the calendar page.
+  - name: Groceries
+    description: |
+      Grocery list with stores, tags, and a 4-hour-undo purchase
+      history. A "tap" can either create, merge into an existing
+      same-name+same-store row, or revive a recently-purchased row
+      — see `POST /api/grocery` for the three modes.
+  - name: Stores
+    description: Physical stores the grocery list groups by.
+
+paths:
+  /api/login:
+    post:
+      tags: [Auth]
+      summary: Sign in and receive a session cookie
+      description: |
+        Validates the password and issues a session. The cookie is
+        set on the response; clients must persist it for subsequent
+        calls.
+
+        Rate-limited: 10 failed attempts per IP per 15 minutes →
+        `429 Too Many Requests` with a `Retry-After` header.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+                  description: The single shared family password (set on the server via `FAMILY_PASSWORD`).
+      responses:
+        '200':
+          description: Session created. The `Set-Cookie` header carries `fh_session`.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: '`fh_session=...; Path=/; HttpOnly; SameSite=Lax; Max-Age=5184000`'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        '401':
+          description: Wrong password.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Too many failed attempts from this IP. Honor `Retry-After` (seconds).
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Auth]
+      summary: Sign out and invalidate the session
+      description: Always succeeds, even with an invalid / missing cookie.
+      responses:
+        '200':
+          description: Session cleared.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+
+  /api/users:
+    get:
+      tags: [Users]
+      summary: List all family members
+      description: Sorted by `displayOrder` ascending.
+      responses:
+        '200':
+          description: All users.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Users]
+      summary: Create a new family member
+      description: |
+        Optionally auto-creates a chores list named `"${name}'s Tasks"`
+        owned by the new user — controlled by the `createList`
+        body field (default `true`). Send `createList: false` if
+        you'll provision the list yourself.
+
+        `displayOrder` defaults to `max(displayOrder) + 1`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                color:
+                  type: string
+                  default: blue
+                  description: 'A palette key (e.g. `blue`, `orange`, `green`).'
+                emoji: { type: string, default: '🙂' }
+                displayOrder: { type: integer }
+                createList:
+                  type: boolean
+                  default: true
+                  description: When `true` (default), also inserts a `kind=chores` list owned by this user.
+      responses:
+        '201':
+          description: User created. Body is the new user row; the auto-created list (if any) is not echoed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    patch:
+      tags: [Users]
+      summary: Edit a user
+      description: Fields not present in the body are left as-is.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                color: { type: string }
+                emoji: { type: string }
+                displayOrder: { type: integer }
+      responses:
+        '200':
+          description: The updated user row.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Users]
+      summary: Delete a user
+      description: |
+        Tasks assigned to this user have their `assigneeId` set to
+        `null` (FK is `ON DELETE SET NULL`). Lists owned by this
+        user are deleted (FK is `ON DELETE CASCADE`), which in
+        turn cascades to tasks in those lists.
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/lists:
+    get:
+      tags: [Lists]
+      summary: List all task lists
+      description: Sorted by `displayOrder`. Includes both chores lists and the auto-managed `system='inbox'` Unassigned list.
+      responses:
+        '200':
+          description: All lists.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/List' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Lists]
+      summary: Create a new list
+      description: |
+        `displayOrder` defaults to `max(displayOrder) + 1`. `kind`
+        defaults to `chores`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                color: { type: string, default: blue }
+                ownerId: { type: integer, nullable: true, description: User who owns this list. `null` for shared lists. }
+                kind:
+                  type: string
+                  enum: [chores, grocery, general]
+                  default: chores
+                displayOrder: { type: integer }
+      responses:
+        '201':
+          description: The new list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/List' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/lists/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    patch:
+      tags: [Lists]
+      summary: Edit a list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                color: { type: string }
+                ownerId: { type: integer, nullable: true }
+                kind: { type: string, enum: [chores, grocery, general] }
+                displayOrder: { type: integer }
+      responses:
+        '200':
+          description: The updated list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/List' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Lists]
+      summary: Delete a list
+      description: |
+        Cascades:
+        - Tasks in this list are deleted (FK `ON DELETE CASCADE`).
+        - Checklist items that targeted this list are pruned from
+          every checklist (the checklist itself stays).
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/tasks:
+    get:
+      tags: [Tasks]
+      summary: List tasks
+      description: |
+        Sorted by `sortOrder`, then `createdAt`. By default only
+        open (non-completed) tasks are returned. For recurring
+        tasks, only ONE row exists per series — its `dueAt` is the
+        next pending occurrence.
+      parameters:
+        - in: query
+          name: includeCompleted
+          schema: { type: boolean, default: false }
+          description: When `true`, also includes rows where `completedAt` is set (non-recurring done tasks and exhausted recurring series).
+        - in: query
+          name: listId
+          schema: { type: integer }
+          description: Restrict to tasks in this list.
+      responses:
+        '200':
+          description: Tasks matching the filter.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Task' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Tasks]
+      summary: Create a task
+      description: |
+        Creates a task in the given list. Accepts the full set of
+        editable fields — external clients can build a complete
+        task in a single call without a follow-up `PATCH`.
+
+        Validation: `dueAt` must be a parseable ISO-8601 string or
+        `null`; `priority` must be 0..3; `tagIds` must be an array
+        of numbers. Bad input returns 400 with a clear `error`
+        message.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [listId, title]
+              properties:
+                listId: { type: integer }
+                title: { type: string }
+                assigneeId: { type: integer, nullable: true }
+                notes: { type: string, nullable: true }
+                dueAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: ISO-8601 due timestamp.
+                dueHasTime:
+                  type: boolean
+                  default: false
+                  description: Whether `dueAt`'s time-of-day is meaningful (vs. all-day).
+                rrule:
+                  type: string
+                  nullable: true
+                  description: 'iCal RRULE without the `RRULE:` prefix — e.g. `FREQ=WEEKLY;BYDAY=MO,WE` or `FREQ=MONTHLY;INTERVAL=1`.'
+                recurFromCompletion:
+                  type: boolean
+                  default: false
+                  description: |
+                    When `true`, completing the task anchors the next
+                    `dueAt` at the completion timestamp instead of the
+                    previous schedule. Only meaningful when `rrule` is
+                    set.
+                priority:
+                  type: integer
+                  minimum: 0
+                  maximum: 3
+                  default: 0
+                  description: '0 = none, 1 = `!`, 2 = `!!`, 3 = `!!!`.'
+                sortOrder:
+                  type: integer
+                  default: 0
+                tagIds:
+                  type: array
+                  items: { type: integer }
+                  description: |
+                    Tag IDs (scope=`task`) to attach to the new task.
+                    Cross-scope IDs (grocery tags) are silently dropped.
+      responses:
+        '201':
+          description: The new task row.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/tasks/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    patch:
+      tags: [Tasks]
+      summary: Edit a task
+      description: |
+        Fields not in the body are left as-is. `tagIds` (if
+        supplied) replaces the full tag set on the task —
+        unknown or cross-scope IDs are silently dropped.
+
+        Auto-routing: if the body changes `assigneeId` without
+        explicitly changing `listId`, the server moves the task
+        between a person's owned list and the Unassigned inbox to
+        keep "lists own a person" semantics consistent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                notes: { type: string, nullable: true }
+                assigneeId: { type: integer, nullable: true }
+                listId: { type: integer }
+                dueAt: { type: string, format: date-time, nullable: true }
+                dueHasTime:
+                  type: boolean
+                  description: Whether `dueAt`'s time-of-day is meaningful (vs all-day).
+                rrule: { type: string, nullable: true }
+                recurFromCompletion: { type: boolean }
+                priority:
+                  type: integer
+                  minimum: 0
+                  maximum: 3
+                  description: '0 = none, 1 = `!`, 2 = `!!`, 3 = `!!!`.'
+                sortOrder: { type: integer }
+                tagIds:
+                  type: array
+                  items: { type: integer }
+                  description: |
+                    Replaces the task's full tag set when present.
+                    Cross-scope IDs (grocery tags) are dropped.
+      responses:
+        '200':
+          description: The updated task row.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Tasks]
+      summary: Delete a task
+      description: |
+        For recurring tasks, deletes the entire series. Completion
+        history (`task_completions`) survives via the
+        `seriesIdSnapshot` snapshot field — useful for streak math
+        after a series is deleted.
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/tasks/{id}/complete:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    post:
+      tags: [Tasks]
+      summary: Complete or uncomplete a task
+      description: |
+        The client must send `action` explicitly because tapping
+        the empty circle on the next occurrence and tapping the
+        filled circle in the Completed section both target the
+        same row.
+
+        **Non-recurring tasks:**
+        - `complete` sets `completedAt = now` and (if provided)
+          `completedBy`.
+        - `uncomplete` clears both fields.
+
+        **Recurring tasks:**
+        - `complete` inserts a row in `task_completions` with the
+          current `dueAt`, then advances the task's `dueAt` to the
+          next occurrence per its `rrule`. Anchor is `task.dueAt`
+          by default, or `now` when `recurFromCompletion = true`.
+          A `complete` call advances by exactly one slot — if
+          you're multiple slots behind, you need multiple calls
+          (or use `recurFromCompletion` for one-tap catch-up).
+          When the rule has no further occurrences (e.g. `COUNT`
+          exhausted), `completedAt` is also set to mark the series
+          finished.
+        - `uncomplete` deletes the most recent `task_completions`
+          row and rewinds `dueAt` to that row's `dueAtAtCompletion`.
+
+        `completedById` defaults to the task's current
+        `assigneeId` if omitted. Send `null` explicitly to record
+        "completed but who-did-it unknown".
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [complete, uncomplete] }
+                completedById: { type: integer, nullable: true }
+      responses:
+        '200':
+          description: The updated task row.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/tasks/{id}/skip:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    post:
+      tags: [Tasks]
+      summary: Skip the current occurrence of a recurring task
+      description: |
+        Advances `dueAt` to the next occurrence per the `rrule`
+        without recording a completion. Useful for "this week's
+        instance doesn't apply" while keeping the cadence going.
+
+        If the rule has no further occurrences (e.g. final
+        instance of a `COUNT=N` series), the task row is
+        **deleted** — there's nothing left to do. The response
+        is `{ "deleted": true }` in that case.
+
+        Non-recurring tasks return `400`.
+      responses:
+        '200':
+          description: |
+            Either the updated task row (if the series continues),
+            or `{ "deleted": true }` if the rule terminated and the
+            task was removed.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Task'
+                  - type: object
+                    properties:
+                      deleted: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/tags:
+    get:
+      tags: [Tags]
+      summary: List tags in a given scope
+      description: |
+        Tags are partitioned by scope: `task` (used by tasks and
+        checklists) and `grocery` (used by grocery items). The
+        same name in each scope is two separate rows.
+      parameters:
+        - in: query
+          name: scope
+          schema: { type: string, enum: [task, grocery], default: task }
+      responses:
+        '200':
+          description: Tags in that scope, ordered by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Tag' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Tags]
+      summary: Create-or-get a tag
+      description: |
+        Returns the existing tag if one already exists with the
+        same canonical name (lower-case, trimmed, stripped of a
+        leading `#`) in that scope; otherwise inserts a new row.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                scope: { type: string, enum: [task, grocery], default: task }
+      responses:
+        '201':
+          description: The tag (new or existing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tag' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/tags/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    patch:
+      tags: [Tags]
+      summary: Rename a tag
+      description: Scope cannot be changed — to "move" a tag to a different surface, delete and recreate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        '200':
+          description: The renamed tag.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tag' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      tags: [Tags]
+      summary: Delete a tag
+      description: Cascades through the `task_tags` / `grocery_item_tags` join tables.
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/checklists:
+    get:
+      tags: [Checklists]
+      summary: List all checklists
+      responses:
+        '200':
+          description: Every checklist.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Checklist' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Checklists]
+      summary: Create a checklist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, items]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                emoji: { type: string, default: '📋' }
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/ChecklistItem' }
+                defaultPriority: { type: integer, minimum: 0, maximum: 3, default: 0 }
+                defaultDueTime:
+                  type: string
+                  pattern: '^\d{1,2}:\d{2}$'
+                  nullable: true
+                  description: 'HH:MM wall-clock applied to every dated task spawned by an apply.'
+                defaultTagIds:
+                  type: array
+                  items: { type: integer }
+                  description: Tag IDs (scope=`task`) attached to every spawned task by default.
+      responses:
+        '201':
+          description: The new checklist.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Checklist' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/checklists/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    patch:
+      tags: [Checklists]
+      summary: Edit a checklist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                emoji: { type: string }
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/ChecklistItem' }
+                defaultPriority: { type: integer, minimum: 0, maximum: 3 }
+                defaultDueTime: { type: string, nullable: true }
+                defaultTagIds:
+                  type: array
+                  items: { type: integer }
+      responses:
+        '200':
+          description: The updated checklist.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Checklist' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Checklists]
+      summary: Delete a checklist
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/checklists/{id}/apply:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    post:
+      tags: [Checklists]
+      summary: Spawn tasks from a checklist
+      description: |
+        Inserts one task per `items` entry into the target list,
+        with caller-supplied options overlaying the checklist's
+        defaults.
+
+        - `startDate` is parsed as a **calendar date** (`YYYY-MM-DD`)
+          and treated as local midnight on the server. The `YYYY-MM-DD`
+          form is required precisely to avoid timezone shifts from
+          `Date.toISOString()` round-trips — sending an ISO timestamp
+          (or any other shape) returns **400** with a clear message.
+          Omitting `startDate` entirely is fine; it just means "no
+          anchor date".
+        - Items with an explicit `offsetDays` are dated as
+          `startDate + offsetDays` (or `now + offsetDays` if no
+          `startDate`). Items without `offsetDays` are dated at
+          `startDate` (or undated if no `startDate`).
+        - `dueTime` (HH:MM) overlays the wall-clock time on every
+          dated seed.
+        - `tagIds` and `priority`: a missing field falls back to
+          the checklist's saved defaults; an empty array `[]` for
+          tagIds, or omitted `dueTime` as `null`, is an
+          **explicit clear**.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                startDate:
+                  type: string
+                  pattern: '^\d{4}-\d{2}-\d{2}$'
+                  description: 'Calendar date `YYYY-MM-DD`. Other shapes (including ISO timestamps) return 400; omit entirely for "no anchor date".'
+                dueTime:
+                  type: string
+                  pattern: '^\d{1,2}:\d{2}$'
+                  nullable: true
+                priority: { type: integer, minimum: 0, maximum: 3 }
+                tagIds:
+                  type: array
+                  items: { type: integer }
+      responses:
+        '200':
+          description: Tasks created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  inserted:
+                    type: array
+                    items: { $ref: '#/components/schemas/Task' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/calendar-feeds:
+    get:
+      tags: [Calendars]
+      summary: List calendar subscriptions
+      description: Sorted by id. URLs are stored as the credential — treat them as secret.
+      responses:
+        '200':
+          description: All feeds.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CalendarFeed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Calendars]
+      summary: Add an iCal subscription
+      description: |
+        The URL is validated to reject private-range addresses
+        (10/8, 172.16/12, 192.168/16, localhost, link-local, the
+        AWS metadata endpoint, etc.) before saving. Non-HTTP(S)
+        schemes are rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, url]
+              properties:
+                name: { type: string }
+                url: { type: string, format: uri }
+                color: { type: string, default: blue }
+                userId:
+                  type: integer
+                  nullable: true
+                  description: User this feed is bound to (or `null` for a shared feed).
+      responses:
+        '201':
+          description: The new feed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CalendarFeed' }
+        '400':
+          description: Missing fields, or the URL failed validation (private range / bad scheme).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/calendar-feeds/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    patch:
+      tags: [Calendars]
+      summary: Edit a calendar feed
+      description: Changing the URL re-runs the SSRF validator and clears the in-memory iCal cache.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                url: { type: string, format: uri }
+                color: { type: string }
+                userId: { type: integer, nullable: true }
+      responses:
+        '200':
+          description: The updated feed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CalendarFeed' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Calendars]
+      summary: Delete a feed
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/stores:
+    get:
+      tags: [Stores]
+      summary: List grocery stores
+      description: Sorted by `displayOrder`, then id.
+      responses:
+        '200':
+          description: All stores.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Store' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Stores]
+      summary: Create a store
+      description: '`displayOrder` defaults to `max(displayOrder) + 1`.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                emoji: { type: string, default: '🛒' }
+                color: { type: string, default: blue }
+      responses:
+        '201':
+          description: The new store.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Store' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [Stores]
+      summary: Reorder stores
+      description: |
+        Re-stamps every store's `displayOrder` from the supplied
+        ID array. Unknown IDs are silently dropped. Wrapped in a
+        single transaction so partial reorders can't half-apply.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderedIds]
+              properties:
+                orderedIds:
+                  type: array
+                  items: { type: integer }
+      responses:
+        '200':
+          description: Reorder applied.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/stores/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    patch:
+      tags: [Stores]
+      summary: Edit a store
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                emoji: { type: string }
+                color: { type: string }
+      responses:
+        '200':
+          description: The updated store.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Store' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      tags: [Stores]
+      summary: Delete a store
+      description: |
+        Grocery items in this store have their `storeId` set to
+        `null` (FK `ON DELETE SET NULL`) — they're demoted to
+        "Unassigned" rather than dropped.
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/grocery:
+    get:
+      tags: [Groceries]
+      summary: List grocery items
+      description: |
+        By default returns only **active** items (those without
+        `lastPurchasedAt`). Sorted by `createdAt`.
+      parameters:
+        - in: query
+          name: includePurchased
+          schema: { type: boolean, default: false }
+          description: |
+            When `true`, also returns rows currently in the 4-hour
+            undo window (i.e. recently checked off but not yet
+            swept). For long-term purchase history, use
+            `/api/grocery/recent` instead.
+      responses:
+        '200':
+          description: Items.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/GroceryItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Groceries]
+      summary: Add an item (or merge / revive)
+      description: |
+        Three-way semantics — the response includes `mode` so the
+        caller knows which path fired:
+
+        1. `merged` — an active item with the same name (case-
+           insensitive, trimmed) AND the same `storeId` already
+           exists. Its `amount` is bumped by the new amount.
+        2. `flipped` — a recently-purchased item with the same
+           name + store is still inside the 4-hour undo window.
+           Its `lastPurchasedAt` is cleared and the corresponding
+           history row is deleted (treat the prior purchase as
+           never having happened).
+        3. `created` — no match in either path; a fresh row is
+           inserted.
+
+        All three branches run inside a single SQLite transaction
+        so partial state can't leak on a crash.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                storeId: { type: integer, nullable: true }
+                amount: { type: integer, minimum: 1, default: 1 }
+                addedById: { type: integer, nullable: true }
+      responses:
+        '200':
+          description: '`merged` or `flipped` (200) — see `mode`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AddItemResult' }
+        '201':
+          description: '`created` — a fresh row.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AddItemResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/grocery/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    patch:
+      tags: [Groceries]
+      summary: Edit a grocery item OR toggle its purchased state
+      description: |
+        Two modes, controlled by the body:
+
+        - **Toggle purchased**: send `{ "purchased": true }` to
+          mark the item bought (stamps `lastPurchasedAt`, inserts a
+          history row in `grocery_purchases`). Send
+          `{ "purchased": false }` to undo within the 4-hour window
+          (clears `lastPurchasedAt`, deletes the most recent
+          history row). Past the window the undo is a no-op
+          safety — the row would already be swept.
+        - **Edit fields**: any combination of `name`, `amount`,
+          `storeId`, `tagIds`. Fields not in the body are left
+          as-is.
+
+        These two modes are mutually exclusive in a single
+        request: if `purchased` is present, the field updates are
+        ignored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [purchased]
+                  properties:
+                    purchased: { type: boolean }
+                    purchasedById:
+                      type: integer
+                      nullable: true
+                      description: 'Required only when `purchased: true` and you want to override the default attribution.'
+                - type: object
+                  properties:
+                    name: { type: string }
+                    amount: { type: integer, minimum: 1 }
+                    storeId:
+                      type: integer
+                      nullable: true
+                      description: |
+                        Store ID to move the item to, or `null` for
+                        Unassigned. The route also accepts a numeric
+                        string (coerced server-side) for direct API
+                        callers that can't easily send raw JSON
+                        numbers — anything else returns 400.
+                    tagIds:
+                      type: array
+                      items: { type: integer }
+                      description: |
+                        Replaces the full tag set on the item. Cross-
+                        scope IDs (task tags) are silently dropped.
+      responses:
+        '200':
+          description: The updated item.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GroceryItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Groceries]
+      summary: Delete a grocery item
+      description: |
+        Hard-deletes the row. Purchase history rows for this item
+        survive (their `groceryItemId` is set to `null`); the
+        `nameSnapshot`, `storeId`, and `amount` snapshots on each
+        purchase row keep the entry meaningful in
+        `/api/grocery/recent`.
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/grocery/recent:
+    get:
+      tags: [Groceries]
+      summary: Recent purchases (most-recent per name + store)
+      description: |
+        Returns the latest purchase per `(nameSnapshot, storeId)`
+        combination within the last `days` days. Powers the
+        "Purchased" section on the UI.
+
+        Each entry's `undoable` flag is `true` only if (a) the
+        source `groceryItemId` still exists and (b) the purchase
+        is still inside the 4-hour undo window — i.e. tapping
+        would revive the original row rather than re-add.
+      parameters:
+        - in: query
+          name: days
+          schema: { type: integer, minimum: 1, default: 30 }
+      responses:
+        '200':
+          description: Deduped recent purchases.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RecentPurchase' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/grocery/recent/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
+        description: A `grocery_purchases.id` from `/api/grocery/recent`.
+    post:
+      tags: [Groceries]
+      summary: Re-add an item from a historical purchase
+      description: |
+        Convenience for the "Purchased" section's tap-to-re-add.
+        Routes through the same three-way logic as
+        `POST /api/grocery`, so the result can be `created`,
+        `merged` (if the user already has an active row with the
+        same name + store), or `flipped` (within 4h).
+
+        The snapshot fields on the purchase seed the new row's
+        `name`, `storeId`, and `amount`. Tags don't carry over —
+        purchase history doesn't snapshot them.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                addedById: { type: integer, nullable: true }
+      responses:
+        '201':
+          description: The result of the underlying add, with `mode`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AddItemResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Purchase id not found in `grocery_purchases`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: fh_session
+      description: Session cookie issued by `POST /api/login`.
+
+  parameters:
+    IdParam:
+      in: path
+      name: id
+      required: true
+      schema: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid session cookie.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: No row with that id.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadRequest:
+      description: Malformed request body or invalid id.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      description: |
+        Uniform error body for every 4xx and 5xx response.
+        - 4xx: `error` names the specific problem ("dueAt is not
+          a valid ISO-8601 timestamp", "name required", etc.).
+        - 5xx: `error` is a generic "internal server error" and
+          `errorId` is a short tag that matches a server-side
+          log entry — quote it when reporting bugs.
+      required: [error]
+      properties:
+        error: { type: string }
+        errorId:
+          type: string
+          description: 'Present only on 500 responses; correlates with a server log entry.'
+
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        color: { type: string, example: blue }
+        emoji: { type: string, example: '🙂' }
+        displayOrder: { type: integer }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, color, emoji, displayOrder, createdAt]
+
+    List:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        color: { type: string }
+        ownerId: { type: integer, nullable: true }
+        kind: { type: string, enum: [chores, grocery, general] }
+        system:
+          type: string
+          enum: [none, inbox]
+          description: |
+            `inbox` marks the auto-created Unassigned list. System
+            lists can't be deleted from the UI and are excluded
+            from list pickers, but the API will not block a
+            DELETE.
+        displayOrder: { type: integer }
+      required: [id, name, color, kind, system, displayOrder]
+
+    Task:
+      type: object
+      properties:
+        id: { type: integer }
+        listId: { type: integer }
+        assigneeId: { type: integer, nullable: true }
+        title: { type: string }
+        notes: { type: string, nullable: true }
+        dueAt: { type: string, format: date-time, nullable: true }
+        dueHasTime: { type: boolean }
+        rrule:
+          type: string
+          nullable: true
+          description: 'iCal RRULE (no `RRULE:` prefix).'
+        recurFromCompletion:
+          type: boolean
+          description: When true, completion anchors the next `dueAt` at the completion timestamp.
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 3
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Set when a non-recurring task is checked off, OR when a
+            recurring series has exhausted (`rrule` ran out of
+            occurrences). Recurring tasks with remaining occurrences
+            keep this null and advance `dueAt` instead.
+        completedBy: { type: integer, nullable: true }
+        sortOrder: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required:
+        [id, listId, title, dueHasTime, recurFromCompletion, priority, sortOrder, createdAt, updatedAt]
+
+    Tag:
+      type: object
+      properties:
+        id: { type: integer }
+        name:
+          type: string
+          description: Stored canonical form — lower-cased, trimmed, leading `#` stripped.
+        scope: { type: string, enum: [task, grocery] }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, scope, createdAt]
+
+    ChecklistItem:
+      type: object
+      description: One template entry within a checklist's `items` array.
+      properties:
+        title: { type: string }
+        listId:
+          type: integer
+          description: Which list the spawned task lands in. Deleted lists get pruned out of the checklist on list-delete.
+        offsetDays:
+          type: integer
+          description: Days from the apply's `startDate` (or `now` if no startDate). Items without this default to 0 when a startDate is supplied.
+        notes: { type: string }
+      required: [title, listId]
+
+    Checklist:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        emoji: { type: string }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ChecklistItem' }
+        defaultPriority: { type: integer }
+        defaultDueTime: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, emoji, items, defaultPriority, createdAt]
+
+    CalendarFeed:
+      type: object
+      properties:
+        id: { type: integer }
+        userId: { type: integer, nullable: true }
+        name: { type: string }
+        url:
+          type: string
+          format: uri
+          description: |
+            The subscription URL. Validated against private-range /
+            non-HTTP(S) schemes on write. Treat as a secret (rotate
+            by regenerating in the source app).
+        color: { type: string }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, url, color, createdAt]
+
+    Store:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        emoji: { type: string }
+        color: { type: string }
+        displayOrder: { type: integer }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, emoji, color, displayOrder, createdAt]
+
+    GroceryItem:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        amount: { type: integer, minimum: 1, default: 1 }
+        storeId: { type: integer, nullable: true }
+        lastPurchasedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Set when the item is checked off. The row stays in the
+            table inside the 4-hour undo window; a lazy sweep on
+            page load deletes rows older than the window. Use
+            `/api/grocery/recent` for long-term history.
+        addedById: { type: integer, nullable: true }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, amount, createdAt]
+
+    RecentPurchase:
+      type: object
+      description: A row from `/api/grocery/recent` — purchase history snapshot.
+      properties:
+        id: { type: integer }
+        groceryItemId:
+          type: integer
+          nullable: true
+          description: The source item, or `null` if it's been deleted / swept.
+        nameSnapshot: { type: string }
+        storeId: { type: integer, nullable: true }
+        amount: { type: integer }
+        purchasedAt: { type: string, format: date-time }
+        undoable:
+          type: boolean
+          description: |
+            `true` only when the source item still exists AND the
+            purchase is inside the 4-hour undo window. The UI
+            shows an "undo" affordance only in this case; past the
+            window, tapping re-adds via the addOrFlipItem path.
+      required: [id, nameSnapshot, amount, purchasedAt, undoable]
+
+    AddItemResult:
+      type: object
+      description: Wrapping of the result of `POST /api/grocery` and `POST /api/grocery/recent/{id}`.
+      required: [item, mode]
+      properties:
+        item: { $ref: '#/components/schemas/GroceryItem' }
+        mode:
+          type: string
+          enum: [created, merged, flipped]
+          description: |
+            - `created`: a new row was inserted (201).
+            - `merged`: an existing active row's amount was bumped (200).
+            - `flipped`: a within-4h purchased row was revived (200).

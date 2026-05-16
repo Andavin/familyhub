@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { calendarFeeds } from '$lib/server/schema';
 import { asc } from 'drizzle-orm';
 import { validateFeedUrl } from '$lib/server/url-allowlist';
+import { apiError } from '$lib/server/api-error';
 
 export const GET: RequestHandler = async () => {
 	const rows = await db.select().from(calendarFeeds).orderBy(asc(calendarFeeds.id));
@@ -11,19 +12,17 @@ export const GET: RequestHandler = async () => {
 };
 
 export const POST: RequestHandler = async ({ request }) => {
-	const body = (await request.json()) as {
-		name: string;
-		url: string;
+	const body = (await request.json().catch(() => ({}))) as {
+		name?: string;
+		url?: string;
 		color?: string;
 		userId?: number | null;
 	};
 	if (!body.name?.trim() || !body.url?.trim()) {
-		return json({ error: 'name and url required' }, { status: 400 });
+		apiError(400, 'name and url required');
 	}
 	const v = validateFeedUrl(body.url.trim());
-	if (!v.ok) {
-		return json({ error: v.reason }, { status: 400 });
-	}
+	if (!v.ok) apiError(400, v.reason);
 	const [row] = await db
 		.insert(calendarFeeds)
 		.values({

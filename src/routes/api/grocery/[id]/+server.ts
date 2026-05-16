@@ -1,14 +1,15 @@
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { groceryItems } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import { markPurchased, undoPurchase } from '$lib/server/grocery';
 import { setGroceryItemTags } from '$lib/server/tags';
+import { apiError } from '$lib/server/api-error';
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const id = Number(params.id);
-	if (!Number.isFinite(id)) throw error(400, 'invalid id');
+	if (!Number.isFinite(id)) apiError(400, 'invalid id');
 	const body = (await request.json().catch(() => ({}))) as Partial<{
 		name: string;
 		amount: number;
@@ -18,25 +19,29 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		tagIds: number[];
 	}>;
 
+	if (body.tagIds !== undefined && !Array.isArray(body.tagIds)) {
+		apiError(400, 'tagIds must be an array of numbers');
+	}
+
 	if (body.purchased !== undefined) {
 		const row = body.purchased
 			? await markPurchased(id, body.purchasedById ?? null)
 			: await undoPurchase(id);
-		if (!row) throw error(404, 'not found');
+		if (!row) apiError(404, 'not found');
 		return json(row);
 	}
 
 	const update: Partial<typeof groceryItems.$inferInsert> = {};
 	if (body.name !== undefined) {
 		const trimmed = body.name.trim();
-		if (!trimmed) throw error(400, 'name required');
+		if (!trimmed) apiError(400, 'name required');
 		update.name = trimmed;
 	}
 	if (body.amount !== undefined) {
-		if (!Number.isFinite(body.amount) || body.amount < 1) {
-			throw error(400, 'amount must be >= 1');
+		if (!Number.isFinite(body.amount) || (body.amount as number) < 1) {
+			apiError(400, 'amount must be >= 1');
 		}
-		update.amount = Math.floor(body.amount);
+		update.amount = Math.floor(body.amount as number);
 	}
 	if (body.storeId !== undefined) {
 		// Defensive coerce: Svelte 5's `bind:value` on a <select> preserves
@@ -52,7 +57,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		} else if (typeof raw === 'string' && raw !== '' && Number.isFinite(Number(raw))) {
 			update.storeId = Number(raw);
 		} else {
-			throw error(400, 'storeId must be a number or null');
+			apiError(400, 'storeId must be a number or null');
 		}
 	}
 
@@ -66,7 +71,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	} else {
 		[row] = await db.select().from(groceryItems).where(eq(groceryItems.id, id)).limit(1);
 	}
-	if (!row) throw error(404, 'not found');
+	if (!row) apiError(404, 'not found');
 
 	if (body.tagIds !== undefined) {
 		await setGroceryItemTags(id, body.tagIds);
@@ -77,7 +82,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 export const DELETE: RequestHandler = async ({ params }) => {
 	const id = Number(params.id);
-	if (!Number.isFinite(id)) throw error(400, 'invalid id');
+	if (!Number.isFinite(id)) apiError(400, 'invalid id');
 	await db.delete(groceryItems).where(eq(groceryItems.id, id));
-	return new Response(null, { status: 204 });
+	return json({ ok: true });
 };

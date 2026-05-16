@@ -1,15 +1,17 @@
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { tasks, lists } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import { getOrCreateInbox, firstOwnedList, INBOX_SYSTEM } from '$lib/server/inbox';
 import { setTaskTags } from '$lib/server/tags';
+import { apiError } from '$lib/server/api-error';
+import { parseDateField } from '$lib/server/parse';
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const id = Number(params.id);
-	if (!Number.isFinite(id)) throw error(400, 'invalid id');
-	const body = (await request.json()) as Partial<{
+	if (!Number.isFinite(id)) apiError(400, 'invalid id');
+	const body = (await request.json().catch(() => ({}))) as Partial<{
 		title: string;
 		notes: string | null;
 		assigneeId: number | null;
@@ -23,15 +25,25 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		tagIds: number[];
 	}>;
 
+	if (
+		body.priority !== undefined &&
+		(!Number.isInteger(body.priority) || body.priority < 0 || body.priority > 3)
+	) {
+		apiError(400, 'priority must be 0, 1, 2, or 3');
+	}
+	if (body.tagIds !== undefined && !Array.isArray(body.tagIds)) {
+		apiError(400, 'tagIds must be an array of numbers');
+	}
+
 	const [existing] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
-	if (!existing) throw error(404, 'not found');
+	if (!existing) apiError(404, 'not found');
 
 	const update: Record<string, unknown> = { updatedAt: new Date() };
 	if ('title' in body) update.title = body.title;
 	if ('notes' in body) update.notes = body.notes;
 	if ('assigneeId' in body) update.assigneeId = body.assigneeId;
 	if ('listId' in body) update.listId = body.listId;
-	if ('dueAt' in body) update.dueAt = body.dueAt ? new Date(body.dueAt) : null;
+	if ('dueAt' in body) update.dueAt = parseDateField(body.dueAt, 'dueAt');
 	if ('dueHasTime' in body) update.dueHasTime = body.dueHasTime;
 	if ('rrule' in body) update.rrule = body.rrule;
 	if ('recurFromCompletion' in body) update.recurFromCompletion = !!body.recurFromCompletion;
@@ -71,7 +83,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	}
 
 	const [row] = await db.update(tasks).set(update).where(eq(tasks.id, id)).returning();
-	if (!row) throw error(404, 'not found');
+	if (!row) apiError(404, 'not found');
 
 	if (Array.isArray(body.tagIds)) {
 		await setTaskTags(id, body.tagIds);
@@ -82,7 +94,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 export const DELETE: RequestHandler = async ({ params }) => {
 	const id = Number(params.id);
-	if (!Number.isFinite(id)) throw error(400, 'invalid id');
+	if (!Number.isFinite(id)) apiError(400, 'invalid id');
 	await db.delete(tasks).where(eq(tasks.id, id));
 	return json({ ok: true });
 };

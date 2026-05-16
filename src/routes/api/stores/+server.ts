@@ -1,6 +1,7 @@
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createStore, listStores, reorderStores } from '$lib/server/stores';
+import { apiError } from '$lib/server/api-error';
 
 export const GET: RequestHandler = async () => {
 	return json(await listStores());
@@ -16,15 +17,15 @@ export const POST: RequestHandler = async ({ request }) => {
 		emoji: body.emoji,
 		color: body.color
 	});
-	if (!row) return json({ error: 'name required' }, { status: 400 });
+	if (!row) apiError(400, 'name required');
 	return json(row, { status: 201 });
 };
 
 export const PATCH: RequestHandler = async ({ request }) => {
 	const body = (await request.json().catch(() => ({}))) as { orderedIds?: unknown };
 	if (!Array.isArray(body.orderedIds) || body.orderedIds.some((v) => !Number.isFinite(v))) {
-		throw error(400, 'orderedIds must be an array of numbers');
+		apiError(400, 'orderedIds must be an array of numbers');
 	}
 	await reorderStores(body.orderedIds as number[]);
-	return new Response(null, { status: 204 });
+	return json({ ok: true });
 };
