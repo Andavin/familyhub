@@ -110,7 +110,7 @@ CREATE TABLE `task_completions` (
 	`series_id_snapshot` integer,
 	`completed_at` integer NOT NULL,
 	`completed_by` integer,
-	`due_at_at_completion` integer,
+	`due_at_completion` integer,
 	FOREIGN KEY (`task_id`) REFERENCES `tasks`(`id`) ON UPDATE no action ON DELETE set null,
 	FOREIGN KEY (`completed_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null
 );

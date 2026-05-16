@@ -52,7 +52,7 @@ export async function loadDoneEntries(since: Date): Promise<DoneEntry[]> {
 					...task,
 					completedAt: completion.completedAt,
 					completedBy: completion.completedBy,
-					dueAt: completion.dueAtAtCompletion ?? task.dueAt
+					dueAt: completion.dueAtCompletion ?? task.dueAt
 				},
 				completionId: completion.id
 			});
@@ -67,7 +67,7 @@ export async function loadDoneEntries(since: Date): Promise<DoneEntry[]> {
 					assigneeId: null,
 					title: completion.titleSnapshot,
 					notes: null,
-					dueAt: completion.dueAtAtCompletion,
+					dueAt: completion.dueAtCompletion,
 					dueHasTime: false,
 					rrule: null,
 					recurFromCompletion: false,

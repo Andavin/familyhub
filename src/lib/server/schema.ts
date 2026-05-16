@@ -105,7 +105,7 @@ export const taskCompletions = sqliteTable(
 		seriesIdSnapshot: integer('series_id_snapshot'),
 		completedAt: integer('completed_at', { mode: 'timestamp_ms' }).notNull(),
 		completedBy: integer('completed_by').references(() => users.id, { onDelete: 'set null' }),
-		dueAtAtCompletion: integer('due_at_at_completion', { mode: 'timestamp_ms' })
+		dueAtCompletion: integer('due_at_completion', { mode: 'timestamp_ms' })
 	},
 	(t) => ({
 		taskIdx: index('task_completions_task_idx').on(t.taskId),

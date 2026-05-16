@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "3585b921-9aaa-4a1a-b421-f26ae922c8e9",
+  "id": "9184a42e-ca06-4fe5-b593-d2316adeae47",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "calendar_feeds": {
@@ -775,8 +775,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "due_at_at_completion": {
-          "name": "due_at_at_completion",
+        "due_at_completion": {
+          "name": "due_at_completion",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
