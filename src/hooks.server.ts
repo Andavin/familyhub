@@ -18,7 +18,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	if (!authed && !isPublic) {
 		if (path.startsWith('/api/')) {
-			return new Response(JSON.stringify({ error: 'unauthorized' }), {
+			return new Response(JSON.stringify({ message: 'unauthorized', error: 'unauthorized' }), {
 				status: 401,
 				headers: { 'content-type': 'application/json' }
 			});
@@ -52,5 +52,6 @@ export const handleError: HandleServerError = ({ error, event }) => {
 		`[handleError] errorId=${errorId} ${event.request.method} ${event.url.pathname}`,
 		error
 	);
-	return { error: 'internal server error', errorId };
+	const msg = 'internal server error';
+	return { message: msg, error: msg, errorId };
 };

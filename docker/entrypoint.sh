@@ -1,5 +1,8 @@
 #!/bin/sh
 set -e
-mkdir -p "$(dirname "${DATABASE_URL:-./data/familyhub.db}")"
-node --import tsx ./src/lib/server/migrate.ts
+
+# Apply pending migrations before starting the app. The migrator
+# creates the data dir itself if it's missing.
+node /app/migrate.mjs
+
 exec "$@"

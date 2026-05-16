@@ -1,12 +1,21 @@
+# Build context exclusions — keep the COPY surface small.
 node_modules
 .svelte-kit
 build
 data
 test-results
 playwright-report
+.playwright
+.responsive-survey
+tests
 .git
+.github
+.gitignore
 .env
 .env.*
 *.log
 package-lock.json
 yarn.lock
+README.md
+openapi.yaml
+compose.example.yml

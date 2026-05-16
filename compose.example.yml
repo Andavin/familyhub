@@ -1,0 +1,32 @@
+# Example Docker Compose deployment for Family Hub.
+#
+# Copy this file to `compose.yml` (or merge the `familyhub` service into
+# your existing stack) and fill in a strong `FAMILY_PASSWORD` via your
+# `.env` file before running `docker compose up -d`.
+
+services:
+  familyhub:
+    # Pull the prebuilt image from GHCR. Pin to a `sha-...` or `v...`
+    # tag in production rather than tracking `latest`.
+    image: ghcr.io/andavin/familyhub:latest
+    # Uncomment to build the image locally from this checkout instead.
+    # build: .
+    restart: unless-stopped
+    ports:
+      - '3030:3000'
+    environment:
+      # Container timezone. Override in `.env`, e.g. TZ=Europe/London.
+      # Falls back to UTC if unset (linuxserver.io convention).
+      - TZ=${TZ:-UTC}
+      - FAMILY_PASSWORD=${FAMILY_PASSWORD:?set in .env}
+      - DATABASE_URL=/data/familyhub.db
+    volumes:
+      - ./data:/data
+      # Alternative to TZ env var — inherit the host's clock instead.
+      # - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/login >/dev/null || exit 1']
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      retries: 3

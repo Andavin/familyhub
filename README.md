@@ -33,8 +33,10 @@ pnpm test:e2e        # playwright e2e tests
 
 ## Production
 
+A complete example deployment lives in [`compose.example.yml`](./compose.example.yml). Copy it to `compose.yml`, set `FAMILY_PASSWORD` in your `.env`, and:
+
 ```bash
-docker compose up -d --build familyhub
+docker compose up -d
 ```
 
 The kiosk should point Fully Kiosk Browser tabs at:
@@ -54,4 +56,18 @@ tasks        – listId, assigneeId, title, dueAt, rrule, flagged, completedAt
 checklists   – name, emoji, items [{title, listId, offsetDays?}]
 groceryItems – name, quantity, category, checkedAt
 sessions     – id, expiresAt
+```
+
+## License
+
+Apache License 2.0 — see [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
+
+```
+Copyright 2026 Andavin
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
 ```

@@ -13,4 +13,4 @@ playwright-report
 .playwright
 .responsive-survey
 *.log
-.responsive-survey
+.screenshots

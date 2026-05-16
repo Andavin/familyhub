@@ -15,5 +15,5 @@ import { error as svelteError } from '@sveltejs/kit';
  * internals.
  */
 export function apiError(status: number, message: string): never {
-	throw svelteError(status, { error: message });
+	throw svelteError(status, { message, error: message });
 }
