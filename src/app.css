@@ -5,6 +5,14 @@
 		'Helvetica Neue', sans-serif;
 	--font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui,
 		sans-serif;
+
+	/*
+	 * Override Tailwind's xl breakpoint to 1200px so the "desktop"
+	 * boundary lines up with the kiosk's intended cutoff: ≥1200 = full
+	 * desktop chrome, 768–1199 (md..<xl) = tablet, <768 = phone with a
+	 * bottom tab bar. md stays at the default 768px.
+	 */
+	--breakpoint-xl: 1200px;
 }
 
 /*

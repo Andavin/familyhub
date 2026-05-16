@@ -8,6 +8,7 @@
 	import CompletedByModal from '$lib/components/CompletedByModal.svelte';
 	import { CompletionFlow } from '$lib/completion-flow.svelte';
 	import { colorVar } from '$lib/colors';
+	import { isPhoneViewport } from '$lib/breakpoints';
 	import type { PageData } from './$types';
 	import type { Task } from '$lib/server/schema';
 	import type { DoneEntry } from '$lib/server/done';
@@ -204,9 +205,28 @@
 	const today = new Date();
 
 	let selected = $state<Date | null>(today);
+	// On phone we hide the day-detail pane by default and only surface it
+	// as a modal sheet when the user taps a day — otherwise the entire
+	// pane sits below the month grid and you'd have to scroll past the
+	// whole calendar to see what's happening on a given day.
+	let showDayModal = $state(false);
+	function selectDay(d: Date) {
+		selected = new Date(d);
+		if (isPhoneViewport()) showDayModal = true;
+	}
+
 	$effect(() => {
 		// reset selection when month changes
 		selected = new Date(data.month.year, data.month.month, today.getDate());
+	});
+
+	$effect(() => {
+		if (!showDayModal) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') showDayModal = false;
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
 	});
 	const dayPills = $derived(selected ? pillsForDay(selected) : []);
 	const dayDone = $derived(selected ? completedForDay(selected) : []);
@@ -284,9 +304,9 @@
 	{/if}
 {/snippet}
 
-<section class="px-4 sm:px-8 pb-3 flex items-center justify-between gap-3 flex-wrap">
+<section class="px-3 sm:px-8 pb-3 flex items-center justify-between gap-3 flex-wrap">
 	<div>
-		<h1 class="text-3xl sm:text-4xl font-display font-bold">{monthName}</h1>
+		<h1 class="text-2xl sm:text-3xl xl:text-4xl font-display font-bold">{monthName}</h1>
 	</div>
 	<div class="flex gap-2 items-center flex-wrap">
 		<div class="chips" data-testid="filter-chips">
@@ -342,7 +362,7 @@
 					class:out={!inMonth}
 					class:today={isToday}
 					class:selected={isSelected}
-					onclick={() => (selected = new Date(d))}
+					onclick={() => selectDay(d)}
 					data-testid="cal-day-{d.toISOString().slice(0, 10)}"
 				>
 					<div class="num">{d.getDate()}</div>
@@ -367,17 +387,44 @@
 		</div>
 	</div>
 
-	<aside class="day-detail">
+	{#if showDayModal}
+		<!--
+			Decorative backdrop — clicking it dismisses, but it's not
+			tabbable or announced to assistive tech. The visible ✕ button
+			inside the modal header is the real close affordance and
+			Escape handles keyboard close (see the $effect above).
+			Matches the backdrop pattern used by every other modal in
+			the app.
+		-->
+		<div
+			class="phone-modal-backdrop"
+			role="presentation"
+			aria-hidden="true"
+			onclick={() => (showDayModal = false)}
+		></div>
+	{/if}
+	<aside class="day-detail" class:phone-modal={showDayModal}>
 		<header>
-			<div class="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
-				{selected ? selected.toLocaleDateString([], { weekday: 'long' }) : ''}
+			<div>
+				<div class="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
+					{selected ? selected.toLocaleDateString([], { weekday: 'long' }) : ''}
+				</div>
+				<div class="text-3xl font-display font-bold">
+					{selected ? selected.getDate() : ''}
+					<span class="text-base font-normal text-[color:var(--color-muted)]">
+						{selected ? selected.toLocaleString([], { month: 'long' }) : ''}
+					</span>
+				</div>
 			</div>
-			<div class="text-3xl font-display font-bold">
-				{selected ? selected.getDate() : ''}
-				<span class="text-base font-normal text-[color:var(--color-muted)]">
-					{selected ? selected.toLocaleString([], { month: 'long' }) : ''}
-				</span>
-			</div>
+			<button
+				type="button"
+				class="phone-close-btn"
+				onclick={() => (showDayModal = false)}
+				aria-label="Close"
+				data-testid="day-modal-close"
+			>
+				✕
+			</button>
 		</header>
 
 		<div class="day-list" data-testid="day-list">
@@ -660,6 +707,70 @@
 		font-size: 0.65rem;
 		color: var(--color-muted);
 	}
+
+	/*
+	 * Phone: stop trying to fit event titles into 50-pixel-wide cells.
+	 * Match Apple Calendar's "compact" zoom: each event becomes a small
+	 * coloured dot under the day number, capped at 5 across with a
+	 * "+N" suffix for the rest. Details are one tap away in the day
+	 * modal — see selectDay() / .day-detail.phone-modal.
+	 *
+	 * The cells also drop their padding and gap so the date numbers
+	 * have visual weight; the grid feels more like a real calendar and
+	 * less like seven columns of empty boxes.
+	 */
+	@media (max-width: 767px) {
+		.grid {
+			gap: 2px;
+		}
+		.cell {
+			min-height: 56px;
+			padding: 0.2rem 0.2rem 0.3rem;
+			gap: 0.1rem;
+			align-items: center;
+		}
+		.num {
+			font-size: 0.95rem;
+		}
+		.cell.today .num {
+			width: 1.55rem;
+			height: 1.55rem;
+		}
+		.pills {
+			flex-direction: row;
+			flex-wrap: wrap;
+			justify-content: center;
+			gap: 3px;
+			max-width: 100%;
+		}
+		.pill {
+			width: 6px;
+			height: 6px;
+			padding: 0;
+			border-radius: 9999px;
+			background: var(--pc);
+			color: transparent;
+			flex-shrink: 0;
+		}
+		.pill.reminder,
+		.pill.ghost {
+			background: var(--pc);
+			color: transparent;
+		}
+		.pill.ghost {
+			opacity: 0.55;
+		}
+		.pill :global(.plabel),
+		.pill :global(.rdot) {
+			display: none;
+		}
+		.more {
+			font-size: 0.6rem;
+			line-height: 1;
+			margin-top: 1px;
+			color: var(--color-muted);
+		}
+	}
 	.day-detail {
 		background: var(--color-card);
 		border-radius: 1.25rem;
@@ -667,9 +778,65 @@
 		min-width: 280px;
 		box-shadow: 0 1px 3px var(--color-shadow-sm);
 	}
+	.day-detail header {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
 	@media (min-width: 1024px) {
 		.day-detail {
 			width: 320px;
+			flex-shrink: 0;
+		}
+	}
+
+	/*
+	 * Phone: hide the inline day-detail entirely and re-render it as a
+	 * fixed bottom-sheet when the user taps a day. The backdrop sits
+	 * just below it so taps outside dismiss. The close button (✕) only
+	 * shows on phone — desktop / tablet keep the always-visible pane.
+	 */
+	.phone-close-btn {
+		display: none;
+	}
+	@media (max-width: 767px) {
+		.day-detail {
+			display: none;
+		}
+		.day-detail.phone-modal {
+			display: block;
+			position: fixed;
+			top: 2rem;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			z-index: 51;
+			margin: 0;
+			min-width: 0;
+			overflow-y: auto;
+			border-radius: 1.25rem 1.25rem 0 0;
+			padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+			box-shadow: 0 -10px 30px -8px var(--color-shadow-lg);
+		}
+		.phone-modal-backdrop {
+			position: fixed;
+			inset: 0;
+			background: var(--color-backdrop);
+			z-index: 50;
+			border: none;
+			padding: 0;
+		}
+		.day-detail.phone-modal .phone-close-btn {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 2rem;
+			height: 2rem;
+			background: var(--color-canvas);
+			color: var(--color-ink-2);
+			border-radius: 9999px;
+			font-size: 1rem;
 			flex-shrink: 0;
 		}
 	}

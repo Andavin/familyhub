@@ -252,7 +252,7 @@
 
 <section class="px-4 sm:px-8 pb-3 flex items-center gap-2 justify-between">
 	<div>
-		<h1 class="text-3xl sm:text-4xl font-display font-bold">Groceries</h1>
+		<h1 class="text-2xl sm:text-3xl xl:text-4xl font-display font-bold">Groceries</h1>
 		<p class="text-sm text-[color:var(--color-muted)]">
 			{data.items.filter((i) => !i.lastPurchasedAt).length} items
 		</p>
@@ -580,6 +580,23 @@
 		margin-bottom: 1rem;
 		position: relative;
 	}
+	/*
+	 * Phone: the row is store + input + stepper + Add button — too much
+	 * to fit on 430px without clipping. Drop the input onto its own
+	 * second line and keep [store] [stepper] [Add] together on the first.
+	 */
+	@media (max-width: 767px) {
+		.add-bar {
+			flex-wrap: wrap;
+			padding: 0.7rem 0.85rem;
+			gap: 0.5rem;
+		}
+		.add-bar :global(input[type='text']) {
+			order: 5;
+			flex-basis: 100%;
+			min-width: 0;
+		}
+	}
 	.store-pill {
 		display: inline-flex;
 		align-items: center;
@@ -590,6 +607,13 @@
 		font-size: 0.85rem;
 		font-weight: 500;
 		max-width: 9rem;
+		white-space: nowrap;
+		flex-shrink: 0;
+	}
+	.store-pill .truncate {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.store-pill .caret {
 		font-size: 0.7rem;

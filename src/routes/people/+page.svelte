@@ -3,6 +3,7 @@
 	import UserEditModal from '$lib/components/UserEditModal.svelte';
 	import CalendarFeedsEditor from '$lib/components/CalendarFeedsEditor.svelte';
 	import { colorVar } from '$lib/colors';
+	import { themeStore, setTheme, type Theme } from '$lib/theme.svelte';
 	import type { PageData } from './$types';
 	import type { User, CalendarFeed } from '$lib/server/schema';
 
@@ -35,7 +36,7 @@
 
 <section class="px-4 sm:px-8 pb-3 flex items-center justify-between">
 	<div>
-		<h1 class="text-3xl sm:text-4xl font-display font-bold">People</h1>
+		<h1 class="text-2xl sm:text-3xl xl:text-4xl font-display font-bold">People</h1>
 		<p class="text-sm text-[color:var(--color-muted)]">Family members in this household</p>
 	</div>
 	<button
@@ -89,6 +90,41 @@
 			testIdPrefix="shared-feed"
 		/>
 	</section>
+
+	<section class="settings-section" data-testid="appearance-section">
+		<header class="flex items-center gap-2 mb-1">
+			<span class="shared-icon" aria-hidden="true">🎨</span>
+			<h2 class="font-bold text-lg">Appearance</h2>
+		</header>
+		<p class="text-xs text-[color:var(--color-muted)] mb-3">
+			Light or dark — applies to everyone using this kiosk.
+		</p>
+		<!--
+			A pair of mutually-exclusive toggle buttons rather than a
+			true ARIA radiogroup: `role="radiogroup"` would imply arrow-
+			key navigation between the options, which we don't
+			implement. `aria-pressed` matches the actual interaction
+			(click-to-select).
+		-->
+		<div class="theme-seg" aria-label="Theme">
+			{#each [
+				{ v: 'light' as Theme, label: 'Light', icon: '☀' },
+				{ v: 'dark' as Theme, label: 'Dark', icon: '☾' }
+			] as o (o.v)}
+				<button
+					type="button"
+					class="theme-option"
+					class:active={themeStore.value === o.v}
+					onclick={() => setTheme(o.v)}
+					aria-pressed={themeStore.value === o.v}
+					data-testid="theme-{o.v}"
+				>
+					<span aria-hidden="true" class="theme-glyph">{o.icon}</span>
+					<span>{o.label}</span>
+				</button>
+			{/each}
+		</div>
+	</section>
 </div>
 
 <UserEditModal
@@ -125,7 +161,8 @@
 		background: var(--c);
 		flex-shrink: 0;
 	}
-	.shared-section {
+	.shared-section,
+	.settings-section {
 		background: var(--color-card);
 		padding: 1.25rem 1.25rem 1rem;
 		border-radius: 1.1rem;
@@ -134,5 +171,32 @@
 	}
 	.shared-icon {
 		font-size: 1.4rem;
+	}
+	.theme-seg {
+		display: inline-flex;
+		gap: 0.3rem;
+		background: var(--color-canvas);
+		border-radius: 0.7rem;
+		padding: 0.25rem;
+	}
+	.theme-option {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.45rem 0.9rem;
+		border-radius: 0.5rem;
+		font-size: 0.9rem;
+		font-weight: 500;
+		color: var(--color-ink-2);
+	}
+	.theme-option.active {
+		background: var(--color-card);
+		color: var(--color-list-blue);
+		font-weight: 700;
+		box-shadow: 0 1px 3px var(--color-shadow-sm);
+	}
+	.theme-glyph {
+		font-size: 1.05rem;
+		line-height: 1;
 	}
 </style>
