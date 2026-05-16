@@ -214,6 +214,8 @@
 	// exclusion, not ordering.
 	const listIdxById = $derived(new Map(data.lists.map((l, i) => [l.id, i])));
 
+	let boardEl = $state<HTMLDivElement | null>(null);
+
 	async function moveList(listId: number, direction: 'left' | 'right') {
 		const idx = listIdxById.get(listId);
 		if (idx === undefined) return;
@@ -222,11 +224,14 @@
 
 		// Stop the browser from yanking the board sideways when the
 		// moved column's button keeps focus and slides to a new x in
-		// the DOM. Capture scrollLeft + blur the trigger now, restore
-		// the scroll position after Svelte commits the reordered DOM.
-		const board = document.querySelector<HTMLElement>('[data-testid="board"]');
-		const scrollLeft = board?.scrollLeft ?? 0;
-		(document.activeElement as HTMLElement | null)?.blur();
+		// the DOM. Capture scrollLeft + blur the trigger now, then
+		// restore both scroll position and focus after Svelte commits
+		// the reordered DOM. The button's DOM node is preserved by
+		// Svelte's keyed each, so the captured ref stays valid.
+		const scrollLeft = boardEl?.scrollLeft ?? 0;
+		const trigger =
+			document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		trigger?.blur();
 
 		const reordered = [...data.lists];
 		[reordered[idx], reordered[target]] = [reordered[target], reordered[idx]];
@@ -236,7 +241,10 @@
 			body: JSON.stringify({ orderedIds: reordered.map((l) => l.id) })
 		});
 		await invalidateAll();
-		if (board) requestAnimationFrame(() => (board.scrollLeft = scrollLeft));
+		requestAnimationFrame(() => {
+			if (boardEl) boardEl.scrollLeft = scrollLeft;
+			trigger?.focus({ preventScroll: true });
+		});
 	}
 
 	function openListEdit(list: List | null) {
@@ -348,7 +356,7 @@
 	</div>
 </section>
 
-<div class="board snap-cols no-scrollbar" data-testid="board">
+<div class="board snap-cols no-scrollbar" data-testid="board" bind:this={boardEl}>
 	{#each columns as col (col.list.id)}
 		{@const today = col.today}
 		{@const scheduled = col.scheduled}

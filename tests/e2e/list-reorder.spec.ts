@@ -98,6 +98,24 @@ test.describe('list reorder', () => {
 		expect(scrollAfter).toBe(0);
 	});
 
+	test('reorder restores focus to the moved button (not document.body)', async ({ page }) => {
+		const titlesBefore = await page.locator('.col-title').allInnerTexts();
+		test.skip(titlesBefore.length < 2, 'seed has fewer than two lists');
+
+		const firstCol = page.getByTestId(/^column-/).first();
+		const id = (await firstCol.getAttribute('data-testid'))!.split('-')[1];
+		await page.getByTestId(`move-list-right-${id}`).click();
+
+		await expect
+			.poll(async () => (await page.locator('.col-title').allInnerTexts())[1])
+			.toBe(titlesBefore[0]);
+
+		const focusedTestId = await page.evaluate(
+			() => (document.activeElement as HTMLElement | null)?.dataset.testid
+		);
+		expect(focusedTestId).toBe(`move-list-right-${id}`);
+	});
+
 	test('reorder survives a full page reload', async ({ page }) => {
 		const titlesBefore = await page.locator('.col-title').allInnerTexts();
 		test.skip(titlesBefore.length < 2, 'seed has fewer than two lists');
