@@ -15,6 +15,10 @@
 #              and a standalone migrate.mjs entrypoint runner.
 #              Runs as non-root with tini handling signals.
 
+# `24-alpine` floats within the Node 24 LTS line so security patches
+# land automatically. Each CI build is published under an immutable
+# `sha-<short>` tag, so reproducibility comes from pinning that
+# published tag in deployments — not from pinning the base image.
 ARG NODE_VERSION=24-alpine
 
 # ---------- 1. deps -------------------------------------------------
@@ -76,11 +80,12 @@ USER app
 
 EXPOSE 3000
 
-# Same shape as the docker-compose healthcheck: /login is a public
-# route, so a 2xx response confirms the server is up and responsive
-# without exercising any authenticated path.
+# /login is a public route, so a 2xx response confirms the server is
+# up and responsive without exercising any authenticated path. The
+# probe runs via node (always present in the image) rather than wget
+# or curl, so the runtime image stays free of an HTTP client install.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-	CMD wget -qO- "http://127.0.0.1:${PORT}/login" >/dev/null 2>&1 || exit 1
+	CMD ["node", "-e", "fetch('http://127.0.0.1:'+process.env.PORT+'/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 
 ENTRYPOINT ["/sbin/tini", "--", "/entrypoint.sh"]
 CMD ["node", "build/index.js"]
