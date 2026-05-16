@@ -52,5 +52,6 @@ export const handleError: HandleServerError = ({ error, event }) => {
 		`[handleError] errorId=${errorId} ${event.request.method} ${event.url.pathname}`,
 		error
 	);
-	return { error: 'internal server error', errorId };
+	const msg = 'internal server error';
+	return { message: msg, error: msg, errorId };
 };

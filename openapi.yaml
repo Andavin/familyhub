@@ -1315,8 +1315,12 @@ components:
         - 5xx: `error` is a generic "internal server error" and
           `errorId` is a short tag that matches a server-side
           log entry — quote it when reporting bugs.
-      required: [error]
+        - `message` is always identical to `error`; it exists to
+          satisfy SvelteKit's `App.Error` contract (kit ≥ 2.60).
+          Clients should prefer `error`.
+      required: [message, error]
       properties:
+        message: { type: string }
         error: { type: string }
         errorId:
           type: string

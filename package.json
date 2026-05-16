@@ -17,29 +17,32 @@
     "db:reset": "tsx src/lib/server/reset.ts"
   },
   "dependencies": {
-    "@sveltejs/adapter-node": "^5.2.13",
-    "@sveltejs/kit": "^2.22.0",
-    "better-sqlite3": "^11.7.0",
+    "@sveltejs/adapter-node": "^5.5.4",
+    "@sveltejs/kit": "^2.60.1",
+    "better-sqlite3": "^11.10.0",
     "drizzle-orm": "^0.36.4",
     "rrule": "^2.8.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.49.0",
-    "@sveltejs/vite-plugin-svelte": "^5.0.0",
-    "@tailwindcss/vite": "^4.0.0",
-    "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^22.10.0",
+    "@playwright/test": "^1.60.0",
+    "@sveltejs/vite-plugin-svelte": "^5.1.1",
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.12.4",
     "drizzle-kit": "^0.28.1",
-    "svelte": "^5.16.0",
-    "svelte-check": "^4.1.1",
-    "tailwindcss": "^4.0.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.0",
-    "vitest": "^2.1.8"
+    "svelte": "^5.55.7",
+    "svelte-check": "^4.4.8",
+    "tailwindcss": "^4.3.0",
+    "tsx": "^4.22.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.2",
+    "vitest": "^2.1.9"
   },
   "packageManager": "pnpm@10.33.1",
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3", "esbuild"]
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
   }
 }
