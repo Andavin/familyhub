@@ -65,8 +65,8 @@ ENV NODE_ENV=production \
 # node, but tini covers the case where the script grows extra
 # children later (db backups, etc.).
 RUN apk add --no-cache tini \
-	&& addgroup -S app -g 1001 \
-	&& adduser -S app -u 1001 -G app
+	&& addgroup -S app -g 1000 \
+	&& adduser -S app -u 1000 -G app
 
 COPY --from=build --chown=app:app /app/build ./build
 COPY --from=prod  --chown=app:app /app/node_modules ./node_modules
