@@ -63,7 +63,7 @@ sessions     – id, expiresAt
 Apache License 2.0 — see [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
 
 ```
-Copyright 2026 Mark Vogel
+Copyright 2026 Andavin
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

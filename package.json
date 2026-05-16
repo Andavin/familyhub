@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Self-hosted family kiosk — tasks, calendar, groceries.",
   "license": "Apache-2.0",
-  "author": "Mark Vogel <mark@andavin.com>",
+  "author": "Andavin",
   "homepage": "https://github.com/Andavin/familyhub#readme",
   "repository": {
     "type": "git",
