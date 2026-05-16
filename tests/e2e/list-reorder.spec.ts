@@ -76,6 +76,28 @@ test.describe('list reorder', () => {
 		expect(titlesAfter[inboxPos]).toBe(titlesBefore[inboxPos + 1]);
 	});
 
+	test('reorder does not yank the board sideways', async ({ page }) => {
+		const titlesBefore = await page.locator('.col-title').allInnerTexts();
+		test.skip(titlesBefore.length < 2, 'seed has fewer than two lists');
+
+		const board = page.getByTestId('board');
+		await board.evaluate((el) => {
+			el.scrollLeft = 0;
+		});
+
+		const firstCol = page.getByTestId(/^column-/).first();
+		const id = (await firstCol.getAttribute('data-testid'))!.split('-')[1];
+		await page.getByTestId(`move-list-right-${id}`).click();
+
+		// Wait for the swap to land before measuring scroll.
+		await expect.poll(async () => (await page.locator('.col-title').allInnerTexts())[1]).toBe(
+			titlesBefore[0]
+		);
+
+		const scrollAfter = await board.evaluate((el) => el.scrollLeft);
+		expect(scrollAfter).toBe(0);
+	});
+
 	test('reorder survives a full page reload', async ({ page }) => {
 		const titlesBefore = await page.locator('.col-title').allInnerTexts();
 		test.skip(titlesBefore.length < 2, 'seed has fewer than two lists');

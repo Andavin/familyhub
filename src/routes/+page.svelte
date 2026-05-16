@@ -219,6 +219,15 @@
 		if (idx === undefined) return;
 		const target = direction === 'left' ? idx - 1 : idx + 1;
 		if (target < 0 || target >= data.lists.length) return;
+
+		// Stop the browser from yanking the board sideways when the
+		// moved column's button keeps focus and slides to a new x in
+		// the DOM. Capture scrollLeft + blur the trigger now, restore
+		// the scroll position after Svelte commits the reordered DOM.
+		const board = document.querySelector<HTMLElement>('[data-testid="board"]');
+		const scrollLeft = board?.scrollLeft ?? 0;
+		(document.activeElement as HTMLElement | null)?.blur();
+
 		const reordered = [...data.lists];
 		[reordered[idx], reordered[target]] = [reordered[target], reordered[idx]];
 		await fetch('/api/lists', {
@@ -227,6 +236,7 @@
 			body: JSON.stringify({ orderedIds: reordered.map((l) => l.id) })
 		});
 		await invalidateAll();
+		if (board) requestAnimationFrame(() => (board.scrollLeft = scrollLeft));
 	}
 
 	function openListEdit(list: List | null) {
