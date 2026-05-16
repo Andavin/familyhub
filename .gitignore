@@ -12,3 +12,4 @@ test-results
 playwright-report
 .playwright
 *.log
+.responsive-survey
