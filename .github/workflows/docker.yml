@@ -1,0 +1,95 @@
+name: docker
+
+# Builds the Family Hub container image and (outside of PR builds)
+# publishes it to GitHub Container Registry. PR builds run through
+# the same Dockerfile to catch breakage early, but skip the push.
+#
+# Tags applied:
+#   - `main`                   on push to main
+#   - `<branch>`               on push to any branch
+#   - `pr-<number>`            on pull requests
+#   - `sha-<short-sha>`        on every build (immutable handle)
+#   - `<semver>`               on push of a v* tag (e.g. v1.2.3)
+#   - `latest`                 only on push to main
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # GHCR rejects uppercase characters in the repo path. Lowercase
+      # the full `owner/repo` so accounts like `Andavin/familyhub`
+      # publish to ghcr.io/andavin/familyhub.
+      - name: Compute image name (lowercase)
+        id: image
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Login is skipped for PRs from forks (and from any PR — we don't
+      # push PR builds, only build them). Pushes from `main` and tag
+      # refs do log in so the subsequent build-push-action can push.
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags + labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=Family Hub
+            org.opencontainers.image.description=Self-hosted family kiosk (tasks, calendar, groceries)
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          # PRs build only — they verify the Dockerfile + the
+          # SvelteKit build still produce a working image, but they
+          # never get a tag in the registry.
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GitHub Actions cache. Lets the build short-circuit on
+          # the (slow) better-sqlite3 native compile when only app
+          # source changed.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # amd64 only for now — the kiosk runs on x86 hardware. Add
+          # `linux/arm64` here if a Raspberry Pi target shows up;
+          # builds will get slower (QEMU emulation under buildx)
+          # unless a self-hosted arm64 runner is configured.
+          platforms: linux/amd64
