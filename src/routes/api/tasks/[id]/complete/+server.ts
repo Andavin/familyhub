@@ -25,7 +25,7 @@ import { apiError } from '$lib/server/api-error';
  *                 then advance tasks.dueAt to the next occurrence. If the
  *                 series is exhausted, also set tasks.completedAt.
  *   - uncomplete: rewind tasks.dueAt to the most recent completion's
- *                 dueAtAtCompletion and delete that log row. If the row was
+ *                 dueAtCompletion and delete that log row. If the row was
  *                 also marked done (series-end), clear completedAt too.
  */
 export const POST: RequestHandler = async ({ params, request }) => {
@@ -60,7 +60,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 		const update: Record<string, unknown> = { updatedAt: new Date() };
 		if (latestCompletion) {
-			update.dueAt = latestCompletion.dueAtAtCompletion;
+			update.dueAt = latestCompletion.dueAtCompletion;
 			await db.delete(taskCompletions).where(eq(taskCompletions.id, latestCompletion.id));
 		}
 		if (task.completedAt) {
@@ -87,7 +87,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			listIdSnapshot: task.listId,
 			completedAt: now,
 			completedBy,
-			dueAtAtCompletion: task.dueAt
+			dueAtCompletion: task.dueAt
 		});
 		const update: Record<string, unknown> = { updatedAt: now };
 		if (next) {

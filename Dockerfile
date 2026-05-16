@@ -64,19 +64,23 @@ ENV NODE_ENV=production \
 # process — the entrypoint script uses `exec` so signals reach
 # node, but tini covers the case where the script grows extra
 # children later (db backups, etc.).
-RUN apk add --no-cache tini \
-	&& addgroup -S app -g 1001 \
-	&& adduser -S app -u 1001 -G app
+#
+# The base image ships with a built-in `node` user at UID/GID 1000,
+# so we reuse it instead of creating an additional user — that UID
+# matches the default first non-root user on most Linux distros,
+# so bind-mounted `./data` volumes Just Work without a host-side
+# chown.
+RUN apk add --no-cache tini
 
-COPY --from=build --chown=app:app /app/build ./build
-COPY --from=prod  --chown=app:app /app/node_modules ./node_modules
-COPY --from=build --chown=app:app /app/package.json ./package.json
-COPY --from=build --chown=app:app /app/drizzle ./drizzle
-COPY --chown=app:app docker/migrate.mjs ./migrate.mjs
-COPY --chown=app:app docker/entrypoint.sh /entrypoint.sh
+COPY --from=build --chown=node:node /app/build ./build
+COPY --from=prod  --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/package.json ./package.json
+COPY --from=build --chown=node:node /app/drizzle ./drizzle
+COPY --chown=node:node docker/migrate.mjs ./migrate.mjs
+COPY --chown=node:node docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-USER app
+USER node
 
 EXPOSE 3000
 
