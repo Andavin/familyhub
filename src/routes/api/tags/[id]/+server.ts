@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { deleteTag, renameTag } from '$lib/server/tags';
 import { apiError } from '$lib/server/api-error';
+import { broadcast } from '$lib/server/events';
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const id = Number(params.id);
@@ -10,6 +11,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	try {
 		const updated = await renameTag(id, body.name ?? '');
 		if (!updated) apiError(400, 'name required');
+		broadcast('tags');
 		return json(updated);
 	} catch (err) {
 		// Renaming to a name that already exists in the same scope
@@ -27,5 +29,10 @@ export const DELETE: RequestHandler = async ({ params }) => {
 	const id = Number(params.id);
 	if (!Number.isFinite(id)) apiError(400, 'invalid id');
 	await deleteTag(id);
+	// Deleting a tag detaches it from tasks and grocery items via the
+	// junction tables — refresh both so their tag chips disappear.
+	broadcast('tags');
+	broadcast('tasks');
+	broadcast('grocery');
 	return json({ ok: true });
 };

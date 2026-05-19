@@ -5,6 +5,7 @@ import { checklists } from '$lib/server/schema';
 import type { ChecklistItem } from '$lib/server/schema';
 import { setChecklistTags } from '$lib/server/tags';
 import { apiError } from '$lib/server/api-error';
+import { broadcast } from '$lib/server/events';
 
 export const GET: RequestHandler = async () => {
 	const rows = await db.select().from(checklists);
@@ -48,5 +49,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		await setChecklistTags(row.id, body.defaultTagIds);
 	}
 
+	broadcast('checklists');
 	return json(row, { status: 201 });
 };

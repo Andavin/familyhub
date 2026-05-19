@@ -6,6 +6,7 @@ import { fetchIcsFeed, expandEvents, type CalEvent } from '$lib/server/ics';
 import { futureOccurrences } from '$lib/server/recurrence';
 import { loadDoneEntries } from '$lib/server/done';
 import { listTags, loadTaskTagMap } from '$lib/server/tags';
+import { dep } from '$lib/channels';
 
 export type GhostOccurrence = {
 	taskId: number;
@@ -14,7 +15,8 @@ export type GhostOccurrence = {
 	at: number; // ms
 };
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, depends }) => {
+	depends(dep('tasks'), dep('lists'), dep('users'), dep('tags'), dep('feeds'));
 	const monthParam = url.searchParams.get('month');
 	const today = new Date();
 	const ref = monthParam ? new Date(monthParam + '-01T00:00:00') : today;

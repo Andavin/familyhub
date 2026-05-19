@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { applyChecklist } from '$lib/server/checklists';
 import { apiError } from '$lib/server/api-error';
+import { broadcast } from '$lib/server/events';
 
 /**
  * Parse a `YYYY-MM-DD` string into a local-midnight Date. Used for
@@ -59,5 +60,6 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		priority: body.priority,
 		tagIds: body.tagIds
 	});
+	if (inserted.length > 0) broadcast('tasks');
 	return json({ inserted });
 };

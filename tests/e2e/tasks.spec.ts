@@ -120,7 +120,6 @@ test.describe('tasks', () => {
 		);
 
 		await page.reload();
-		await page.waitForLoadState('networkidle');
 
 		// Future task only appears once Scheduled is expanded.
 		await expect(firstCol.getByText('Future task')).toHaveCount(0);
@@ -168,7 +167,6 @@ test.describe('tasks', () => {
 		);
 
 		await page.reload();
-		await page.waitForLoadState('networkidle');
 
 		// Visible in Today (with overdue pill) — only one row, no duplicate in Scheduled
 		await expect(firstCol.getByText('Overdue thing')).toHaveCount(1);
@@ -215,7 +213,6 @@ test.describe('tasks', () => {
 		);
 
 		await page.reload();
-		await page.waitForLoadState('networkidle');
 
 		// Today section shows the overdue instance
 		const allRows = firstCol.locator('[data-testid="task-row"]', {
@@ -256,7 +253,6 @@ test.describe('tasks', () => {
 		);
 
 		await page.reload();
-		await page.waitForLoadState('networkidle');
 
 		// Today-due tasks also appear in Scheduled (per current model), so
 		// initial count in the column is 2 with all sections collapsed.

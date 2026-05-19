@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { getOrCreateTag, listTags } from '$lib/server/tags';
 import type { TagScope } from '$lib/server/schema';
 import { apiError } from '$lib/server/api-error';
+import { broadcast } from '$lib/server/events';
 
 function parseScope(raw: unknown): TagScope {
 	return raw === 'grocery' ? 'grocery' : 'task';
@@ -22,5 +23,6 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 	const tag = await getOrCreateTag(body.name ?? '', parseScope(body.scope));
 	if (!tag) apiError(400, 'name required');
+	broadcast('tags');
 	return json(tag, { status: 201 });
 };

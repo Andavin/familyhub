@@ -7,8 +7,13 @@ import { loadDoneEntries } from '$lib/server/done';
 import { listTags, loadTaskTagMap, loadChecklistTagMap } from '$lib/server/tags';
 import { isOverdue } from '$lib/format';
 import { nextOccurrence, nextOccurrenceAfter } from '$lib/server/recurrence';
+import { dep } from '$lib/channels';
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ depends }) => {
+	// Tie this loader to every realtime channel its data depends on, so
+	// an SSE event for any of them re-runs the loader without a full
+	// navigation. See `src/lib/realtime.ts`.
+	depends(dep('tasks'), dep('lists'), dep('users'), dep('tags'), dep('checklists'));
 	await getOrCreateInbox();
 
 	// Show completed within the last 30 days; older completes drop off automatically.

@@ -5,6 +5,7 @@ import { tasks } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import { nextOccurrence } from '$lib/server/recurrence';
 import { apiError } from '$lib/server/api-error';
+import { broadcast } from '$lib/server/events';
 
 /**
  * Skip the current occurrence of a recurring task without logging a
@@ -25,6 +26,7 @@ export const POST: RequestHandler = async ({ params }) => {
 	const next = nextOccurrence(task.rrule, task.dueAt ?? new Date());
 	if (!next) {
 		await db.delete(tasks).where(eq(tasks.id, id));
+		broadcast('tasks');
 		return json({ deleted: true });
 	}
 
@@ -33,5 +35,6 @@ export const POST: RequestHandler = async ({ params }) => {
 		.set({ dueAt: next, updatedAt: new Date() })
 		.where(eq(tasks.id, id))
 		.returning();
+	broadcast('tasks');
 	return json(row);
 };

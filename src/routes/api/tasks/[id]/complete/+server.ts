@@ -5,6 +5,7 @@ import { tasks, taskCompletions } from '$lib/server/schema';
 import { eq, desc } from 'drizzle-orm';
 import { nextOccurrence } from '$lib/server/recurrence';
 import { apiError } from '$lib/server/api-error';
+import { broadcast } from '$lib/server/events';
 
 /**
  * Apple-Reminders-style complete/uncomplete.
@@ -68,6 +69,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			update.completedBy = null;
 		}
 		const [row] = await db.update(tasks).set(update).where(eq(tasks.id, id)).returning();
+		broadcast('tasks');
 		return json(row);
 	}
 
@@ -97,6 +99,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			update.completedBy = completedBy;
 		}
 		const [row] = await db.update(tasks).set(update).where(eq(tasks.id, id)).returning();
+		broadcast('tasks');
 		return json(row);
 	}
 
@@ -105,5 +108,6 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		.set({ completedAt: now, completedBy, updatedAt: now })
 		.where(eq(tasks.id, id))
 		.returning();
+	broadcast('tasks');
 	return json(row);
 };

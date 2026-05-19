@@ -6,6 +6,7 @@ import { asc, eq, isNull, and } from 'drizzle-orm';
 import { apiError } from '$lib/server/api-error';
 import { parseDateField } from '$lib/server/parse';
 import { setTaskTags } from '$lib/server/tags';
+import { broadcast } from '$lib/server/events';
 
 export const GET: RequestHandler = async ({ url }) => {
 	const includeCompleted = url.searchParams.get('includeCompleted') === 'true';
@@ -78,5 +79,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		await setTaskTags(row.id, body.tagIds);
 	}
 
+	broadcast('tasks');
 	return json(row, { status: 201 });
 };

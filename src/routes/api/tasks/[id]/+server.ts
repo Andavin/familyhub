@@ -7,6 +7,7 @@ import { getOrCreateInbox, firstOwnedList, INBOX_SYSTEM } from '$lib/server/inbo
 import { setTaskTags } from '$lib/server/tags';
 import { apiError } from '$lib/server/api-error';
 import { parseDateField } from '$lib/server/parse';
+import { broadcast } from '$lib/server/events';
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const id = Number(params.id);
@@ -89,6 +90,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		await setTaskTags(id, body.tagIds);
 	}
 
+	broadcast('tasks');
 	return json(row);
 };
 
@@ -96,5 +98,6 @@ export const DELETE: RequestHandler = async ({ params }) => {
 	const id = Number(params.id);
 	if (!Number.isFinite(id)) apiError(400, 'invalid id');
 	await db.delete(tasks).where(eq(tasks.id, id));
+	broadcast('tasks');
 	return json({ ok: true });
 };

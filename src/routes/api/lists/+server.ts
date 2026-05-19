@@ -5,6 +5,7 @@ import { lists } from '$lib/server/schema';
 import { asc, max } from 'drizzle-orm';
 import { apiError } from '$lib/server/api-error';
 import { reorderLists } from '$lib/server/lists';
+import { broadcast } from '$lib/server/events';
 
 const VALID_KINDS = new Set(['chores', 'grocery', 'general']);
 
@@ -40,6 +41,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			displayOrder
 		})
 		.returning();
+	broadcast('lists');
 	return json(row, { status: 201 });
 };
 
@@ -49,5 +51,6 @@ export const PATCH: RequestHandler = async ({ request }) => {
 		apiError(400, 'orderedIds must be an array of numbers');
 	}
 	await reorderLists(body.orderedIds as number[]);
+	broadcast('lists');
 	return json({ ok: true });
 };

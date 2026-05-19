@@ -5,6 +5,7 @@ import { groceryItems } from '$lib/server/schema';
 import { asc, isNull } from 'drizzle-orm';
 import { addOrFlipItem } from '$lib/server/grocery';
 import { apiError } from '$lib/server/api-error';
+import { broadcast } from '$lib/server/events';
 
 export const GET: RequestHandler = async ({ url }) => {
 	const includePurchased = url.searchParams.get('includePurchased') === 'true';
@@ -37,5 +38,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		addedById: body.addedById ?? null
 	});
 	if (!result) apiError(400, 'name required');
+	broadcast('grocery');
 	return json(result, { status: result.mode === 'created' ? 201 : 200 });
 };
