@@ -9,7 +9,7 @@
 	import TaskDetailModal from '$lib/components/TaskDetailModal.svelte';
 	import { CompletionFlow } from '$lib/completion-flow.svelte';
 	import { colorVar } from '$lib/colors';
-	import { isOverdue } from '$lib/format';
+	import { buildScheduled } from '$lib/scheduled';
 	import type { PageData } from './$types';
 	import type { Task, List, Checklist } from '$lib/server/schema';
 	import type { DoneEntry } from '$lib/server/done';
@@ -114,12 +114,7 @@
 			const projected = data.projectedRecurring
 				.filter((t) => t.listId === list.id)
 				.filter((t) => taskPassesFilter(t.id));
-			const scheduled = [
-				...listOpen.filter(
-					(t) => t.dueAt && !isOverdue(new Date(t.dueAt), t.dueHasTime)
-				),
-				...projected
-			].sort(byDateThenCreated);
+			const scheduled = buildScheduled(listOpen, projected).sort(byDateThenCreated);
 			return {
 				list,
 				today,
