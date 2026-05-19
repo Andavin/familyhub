@@ -25,25 +25,56 @@
 	let revealed = $state<{ plaintext: string; name: string } | null>(null);
 	let copied = $state(false);
 	let copiedTimer: ReturnType<typeof setTimeout> | null = null;
+	// User-facing error string for create/revoke failures. The server
+	// emits a 4xx with a specific `message`; we render that verbatim so
+	// the user knows what went wrong instead of seeing the spinner stop
+	// with nothing else happening.
+	let errorMsg = $state<string | null>(null);
+	// When the clipboard API refuses (insecure context, denied perms,
+	// iframe sandbox), `copied` stays false on purpose — but we ALSO
+	// surface a hint pointing at the pre-selected token text so the
+	// user has a path forward and doesn't dismiss the panel thinking
+	// the key is safely in their clipboard.
+	let copyFailed = $state(false);
+	let tokenEl = $state<HTMLElement | null>(null);
 
 	async function add() {
 		if (!newName.trim() || busy) return;
 		busy = true;
+		errorMsg = null;
 		try {
 			const res = await fetch('/api/api-keys', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ name: newName.trim(), userId })
 			});
-			if (!res.ok) return;
+			if (!res.ok) {
+				const body = await res.json().catch(() => ({}));
+				errorMsg = body.message ?? body.error ?? `Could not create key (HTTP ${res.status}).`;
+				return;
+			}
 			const row = (await res.json()) as { plaintext: string; name: string };
 			revealed = { plaintext: row.plaintext, name: row.name };
 			copied = false;
+			copyFailed = false;
 			newName = '';
 			await invalidateAll();
+		} catch (err) {
+			console.error('[api-keys] create failed', err);
+			errorMsg = 'Could not reach the server. Check your connection and try again.';
 		} finally {
 			busy = false;
 		}
+	}
+
+	function selectTokenText() {
+		if (!tokenEl) return;
+		const range = document.createRange();
+		range.selectNodeContents(tokenEl);
+		const sel = window.getSelection();
+		if (!sel) return;
+		sel.removeAllRanges();
+		sel.addRange(range);
 	}
 
 	async function copy() {
@@ -51,6 +82,7 @@
 		try {
 			await navigator.clipboard.writeText(revealed.plaintext);
 			copied = true;
+			copyFailed = false;
 			// Revert the check back to the clipboard icon after a beat,
 			// matching the GitHub pattern. Lets the user copy again if
 			// the paste target didn't take.
@@ -59,16 +91,23 @@
 				copied = false;
 				copiedTimer = null;
 			}, 1800);
-		} catch {
-			// Clipboard API can fail in insecure contexts or denied
-			// permissions. Leave `copied` false so the button doesn't
-			// claim success; user can long-press to copy manually.
+		} catch (err) {
+			// Clipboard API rejected. Don't claim success — instead, select
+			// the token text so the user can hit Ctrl/Cmd+C manually, and
+			// show an explicit "couldn't copy" hint. Without this, a user
+			// who didn't realize the click failed will dismiss the panel
+			// and lose the only chance to capture the key.
+			console.warn('[api-keys] clipboard write failed', err);
+			copied = false;
+			copyFailed = true;
+			selectTokenText();
 		}
 	}
 
 	function dismissReveal() {
 		revealed = null;
 		copied = false;
+		copyFailed = false;
 		if (copiedTimer) {
 			clearTimeout(copiedTimer);
 			copiedTimer = null;
@@ -77,9 +116,20 @@
 
 	async function revoke(id: number) {
 		busy = true;
+		errorMsg = null;
 		try {
-			await fetch(`/api/api-keys/${id}`, { method: 'DELETE' });
+			const res = await fetch(`/api/api-keys/${id}`, { method: 'DELETE' });
+			if (!res.ok) {
+				const body = await res.json().catch(() => ({}));
+				errorMsg = body.message ?? body.error ?? `Could not revoke key (HTTP ${res.status}).`;
+				// Skip invalidateAll on failure so the user keeps seeing
+				// the row that's actually still live on the server.
+				return;
+			}
 			await invalidateAll();
+		} catch (err) {
+			console.error('[api-keys] revoke failed', err);
+			errorMsg = 'Could not reach the server. Key may still be active.';
 		} finally {
 			busy = false;
 		}
@@ -133,7 +183,11 @@
 			</span>
 		</div>
 		<div class="token-wrap">
-			<code class="token" data-testid="{testIdPrefix}-plaintext">{revealed.plaintext}</code>
+			<code
+				class="token"
+				bind:this={tokenEl}
+				data-testid="{testIdPrefix}-plaintext"
+			>{revealed.plaintext}</code>
 			<button
 				type="button"
 				class="copy-icon"
@@ -166,6 +220,15 @@
 				{/if}
 			</button>
 		</div>
+		{#if copyFailed}
+			<p
+				class="copy-fallback text-xs"
+				role="alert"
+				data-testid="{testIdPrefix}-copy-failed"
+			>
+				Couldn't access the clipboard. The token is selected — press Ctrl/Cmd + C to copy it manually.
+			</p>
+		{/if}
 		<button
 			class="btn ghost dismiss"
 			onclick={dismissReveal}
@@ -174,6 +237,12 @@
 			I've saved it
 		</button>
 	</div>
+{/if}
+
+{#if errorMsg}
+	<p class="error-banner" role="alert" data-testid="{testIdPrefix}-error">
+		{errorMsg}
+	</p>
 {/if}
 
 <div class="key-add">
@@ -270,6 +339,19 @@
 	}
 	.dismiss {
 		align-self: flex-end;
+	}
+	.copy-fallback {
+		margin: 0;
+		color: var(--color-list-orange);
+	}
+	.error-banner {
+		margin: 0 0 0.6rem;
+		padding: 0.55rem 0.75rem;
+		border-radius: 0.6rem;
+		background: color-mix(in srgb, var(--color-list-red) 12%, var(--color-canvas));
+		border: 1px solid color-mix(in srgb, var(--color-list-red) 35%, transparent);
+		color: var(--color-list-red);
+		font-size: 0.85rem;
 	}
 	.key-add {
 		display: flex;
