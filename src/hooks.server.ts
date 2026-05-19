@@ -1,15 +1,42 @@
 import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { randomBytes } from 'node:crypto';
 import { SESSION_COOKIE, validateSession } from '$lib/server/auth';
+import { extractBearerToken, findApiKey, touchApiKey } from '$lib/server/api-keys';
 
 const PUBLIC_ROUTES = ['/login', '/api/login', '/manifest.webmanifest', '/favicon.svg'];
 
 export const handle: Handle = async ({ event, resolve }) => {
+	const path = event.url.pathname;
+
+	// Bearer API keys are only honored for /api/* — the kiosk UI is
+	// cookie-authenticated, and accepting a bearer token on HTML routes
+	// would invite confusing flows (e.g. a logged-out browser tab making
+	// privileged calls because a curl experiment left a header around).
+	const bearer = path.startsWith('/api/')
+		? extractBearerToken(event.request.headers.get('authorization'))
+		: null;
+	if (bearer) {
+		const key = await findApiKey(bearer);
+		if (key) {
+			event.locals.authed = true;
+			event.locals.apiKeyId = key.id;
+			event.locals.apiUserId = key.userId;
+			touchApiKey(key.id);
+			return resolve(event);
+		}
+		// A bearer token was presented but didn't match. Refuse outright
+		// rather than falling back to cookie auth — a stale or revoked
+		// token is a bug the caller needs to see, not silently downgrade.
+		return new Response(JSON.stringify({ message: 'unauthorized', error: 'unauthorized' }), {
+			status: 401,
+			headers: { 'content-type': 'application/json' }
+		});
+	}
+
 	const sid = event.cookies.get(SESSION_COOKIE);
 	const authed = await validateSession(sid);
 	event.locals.authed = authed;
 
-	const path = event.url.pathname;
 	const isPublic =
 		PUBLIC_ROUTES.includes(path) ||
 		path.startsWith('/_app/') ||

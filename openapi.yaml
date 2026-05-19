@@ -13,6 +13,10 @@ info:
 
     ## Authentication
 
+    Two interchangeable mechanisms are accepted on `/api/*`:
+
+    ### Cookie session (kiosk)
+
     1. `POST /api/login` with `{ "password": "..." }` to receive a
        `fh_session` cookie (60-day lifetime, `HttpOnly`, `SameSite=Lax`,
        `Secure` when the server is running with `NODE_ENV=production`).
@@ -21,10 +25,28 @@ info:
        with `401 { "message": "unauthorized", "error": "unauthorized" }`.
     3. `DELETE /api/login` to invalidate the session.
 
-    External clients (e.g. Node-RED) should call `POST /api/login`
-    once at startup, capture the `Set-Cookie` header, and replay it
-    on every subsequent request. The login endpoint is the only
-    public route under `/api/*`.
+    The login endpoint is the only public route under `/api/*` for the
+    cookie flow.
+
+    ### Bearer API key (external integrations)
+
+    For background syncs (Apple Reminders → tasks, grocery importers,
+    home automation), use a key minted on the People page:
+
+    1. Open People → either pick a person (for per-user attribution) or
+       use the **Shared API Keys** section, then **Create key**. The
+       plaintext (`fh_…`) is shown exactly once — copy it now.
+    2. Send `Authorization: Bearer fh_…` on every `/api/*` request.
+       A presented-but-invalid token gets a hard 401 (the request does
+       not fall through to cookie auth).
+    3. Revoke a key from the same UI; the token is rejected immediately
+       on the next request.
+
+    Per-user keys carry the user's id on `event.locals.apiUserId` for
+    routes that want to attribute work automatically. As of this
+    revision no write endpoint consumes that field yet — integrations
+    must continue to send `assigneeId` etc. explicitly. The wiring
+    will be added per-route as concrete integrations land.
 
     ## Conventions
 
@@ -65,6 +87,7 @@ servers:
 
 security:
   - cookieAuth: []
+  - bearerAuth: []
 
 tags:
   - name: Auth
@@ -95,6 +118,11 @@ tags:
       — see `POST /api/grocery` for the three modes.
   - name: Stores
     description: Physical stores the grocery list groups by.
+  - name: ApiKeys
+    description: |
+      Bearer tokens for external integrations. Plaintext is shown
+      exactly once on creation; the server keeps only a SHA-256 hash.
+      Per-user keys attribute work to that user; shared keys don't.
 
 paths:
   /api/login:
@@ -945,6 +973,98 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /api/api-keys:
+    get:
+      tags: [ApiKeys]
+      summary: List API keys
+      description: |
+        Returns active (non-revoked) keys. `keyHash` is never returned;
+        only the display `prefix` (first 12 chars of the original
+        plaintext) is exposed for UI matching.
+      parameters:
+        - in: query
+          name: userId
+          schema: { type: integer }
+          description: Filter to keys bound to one user.
+        - in: query
+          name: shared
+          schema: { type: integer, enum: [1] }
+          description: Pass `shared=1` to return only shared keys (`userId` null).
+      responses:
+        '200':
+          description: Listed keys.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ApiKey' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [ApiKeys]
+      summary: Create an API key
+      description: |
+        Generates a fresh `fh_…` token, returns its plaintext **exactly
+        once** in the response, and stores only the SHA-256 hash. There
+        is no way to retrieve the plaintext again — a lost key must be
+        revoked and recreated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  maxLength: 80
+                  description: Free-form label (e.g. "Apple Reminders sync").
+                userId:
+                  type: integer
+                  nullable: true
+                  description: |
+                    User to attribute requests made with this key to.
+                    Omit (or send null) for a shared key.
+      responses:
+        '201':
+          description: The new key, with the plaintext exposed once.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiKey'
+                  - type: object
+                    required: [plaintext]
+                    properties:
+                      plaintext:
+                        type: string
+                        description: The bearer token — copy now, never shown again.
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/api-keys/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    delete:
+      tags: [ApiKeys]
+      summary: Revoke an API key
+      description: |
+        Soft-delete: the key stops authenticating immediately, but the
+        row remains so the audit trail (when it was created / last
+        used) stays visible. Idempotent — revoking an already-revoked
+        or non-existent id still returns `200 { ok: true }`.
+      responses:
+        '200':
+          description: Revoked (or already gone).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /api/stores:
     get:
       tags: [Stores]
@@ -1286,6 +1406,15 @@ components:
       in: cookie
       name: fh_session
       description: Session cookie issued by `POST /api/login`.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: fh_<43 base64url chars>
+      description: |
+        API key minted via the People page. Header form:
+        `Authorization: Bearer fh_<token>`. A token that is missing,
+        malformed, or revoked returns a hard 401 — the request is
+        *not* downgraded to cookie auth.
 
   parameters:
     IdParam:
@@ -1455,6 +1584,29 @@ components:
         color: { type: string }
         createdAt: { type: string, format: date-time }
       required: [id, name, url, color, createdAt]
+
+    ApiKey:
+      type: object
+      description: |
+        Server-side representation of an API key. The `plaintext` field
+        only appears on the POST response — never on subsequent reads.
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        prefix:
+          type: string
+          description: First 12 chars of the original plaintext (`fh_…`), for UI display only.
+        userId:
+          type: integer
+          nullable: true
+          description: User this key is attributed to; `null` for shared keys.
+        createdAt: { type: string, format: date-time }
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Updated lazily on use (throttled to ~1 write/min/key).
+      required: [id, name, prefix, createdAt]
 
     Store:
       type: object

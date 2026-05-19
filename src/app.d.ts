@@ -2,6 +2,10 @@ declare global {
 	namespace App {
 		interface Locals {
 			authed: boolean;
+			/** Set when the request authenticated via Bearer API key. */
+			apiKeyId?: number;
+			/** User the key is attributed to. Null on shared keys. */
+			apiUserId?: number | null;
 		}
 		/**
 		 * Pinned body shape for every `throw error()` / `apiError()`

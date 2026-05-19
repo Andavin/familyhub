@@ -3,16 +3,27 @@
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import EmojiPicker from './EmojiPicker.svelte';
 	import CalendarFeedsEditor from './CalendarFeedsEditor.svelte';
+	import ApiKeysEditor from './ApiKeysEditor.svelte';
 	import type { User, CalendarFeed } from '$lib/server/schema';
+
+	type ApiKeyListed = {
+		id: number;
+		name: string;
+		prefix: string;
+		userId: number | null;
+		createdAt: string | Date;
+		lastUsedAt: string | Date | null;
+	};
 
 	type Props = {
 		open: boolean;
 		user: User | null; // null = create
 		feeds?: CalendarFeed[];
+		apiKeys?: ApiKeyListed[];
 		onclose: () => void;
 		onsaved: () => Promise<void> | void;
 	};
-	let { open, user, feeds = [], onclose, onsaved }: Props = $props();
+	let { open, user, feeds = [], apiKeys = [], onclose, onsaved }: Props = $props();
 
 	let name = $state('');
 	let color = $state('blue');
@@ -121,6 +132,17 @@
 					defaultColor={user.color}
 					testIdPrefix="feed"
 				/>
+			</div>
+
+			<div class="block mb-5">
+				<div class="text-xs uppercase tracking-wide text-[color:var(--color-muted)] mb-1.5">
+					API keys
+				</div>
+				<p class="text-xs text-[color:var(--color-muted)] mb-2">
+					Bearer tokens for integrations that should be attributed to {name || 'this person'}.
+					Use the Shared API Keys section for tokens not tied to one person.
+				</p>
+				<ApiKeysEditor keys={apiKeys} userId={user.id} testIdPrefix="api-key" />
 			</div>
 		{/if}
 
