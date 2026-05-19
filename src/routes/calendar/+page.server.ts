@@ -40,11 +40,14 @@ export const load: PageServerLoad = async ({ url }) => {
 		loadTaskTagMap()
 	]);
 
-	// Fetch every feed in parallel, then expand recurring events into per-
-	// occurrence entries within the visible grid. Bad feeds return [] so a
-	// single broken URL never breaks the page.
-	const events: (CalEvent & { feedId: number; userId: number | null })[] = [];
-	const feedFetches = await Promise.all(
+	// Stream ICS feeds: every other piece of data above is local-DB-fast, but
+	// public calendars round-trip over the network with up to FETCH_TIMEOUT_MS
+	// (8s) per feed on a cache miss. Returning this as an unawaited promise
+	// lets SvelteKit ship the page immediately with tasks + ghosts and slot
+	// events in once the fetches resolve — the day grid stays interactive
+	// while external feeds load. Bad feeds return [] so a single broken URL
+	// never breaks the page.
+	const events: Promise<(CalEvent & { feedId: number; userId: number | null })[]> = Promise.all(
 		feeds.map((f) =>
 			fetchIcsFeed(f.url, f.name, f.color).then((raw) =>
 				expandEvents(raw, gridStart, gridEnd)
@@ -54,8 +57,7 @@ export const load: PageServerLoad = async ({ url }) => {
 					.map((e) => ({ ...e, feedId: f.id, userId: f.userId }))
 			)
 		)
-	);
-	for (const arr of feedFetches) events.push(...arr);
+	).then((arrs) => arrs.flat());
 
 	const ghosts: GhostOccurrence[] = [];
 	const usersById = new Map(u.map((x) => [x.id, x]));

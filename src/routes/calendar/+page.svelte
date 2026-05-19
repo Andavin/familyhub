@@ -15,6 +15,27 @@
 
 	let { data }: { data: PageData } = $props();
 
+	// `data.events` is a streamed promise — the page renders before public
+	// ICS feeds finish fetching. Mirror it into reactive state so pillsForDay
+	// re-computes when events land, and show a subtle indicator while we wait.
+	type StreamedEvent = Awaited<typeof data.events>[number];
+	let events = $state<StreamedEvent[]>([]);
+	let eventsLoading = $state(true);
+	$effect(() => {
+		let cancelled = false;
+		Promise.resolve(data.events)
+			.then((evs) => {
+				if (cancelled) return;
+				events = evs;
+			})
+			.finally(() => {
+				if (!cancelled) eventsLoading = false;
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
+
 	// Per-person filter — null is the "unassigned / shared" bucket. Persist in
 	// localStorage so the kiosk remembers which chips you toggled.
 	const FILTER_KEY = 'fh_cal_filter';
@@ -112,7 +133,7 @@
 
 	function pillsForDay(d: Date): Pill[] {
 		const pills: Pill[] = [];
-		for (const e of data.events) {
+		for (const e of events) {
 			if (!isPersonVisible(e.userId)) continue;
 			const start = new Date(e.start);
 			const end = new Date(e.end);
@@ -305,8 +326,17 @@
 {/snippet}
 
 <section class="px-3 sm:px-8 pb-3 flex items-center justify-between gap-3 flex-wrap">
-	<div>
+	<div class="flex items-center gap-2">
 		<h1 class="text-2xl sm:text-3xl xl:text-4xl font-display font-bold">{monthName}</h1>
+		{#if eventsLoading && data.feeds.length > 0}
+			<span
+				class="text-xs text-[color:var(--color-muted)] feed-loading"
+				aria-live="polite"
+				data-testid="events-loading"
+			>
+				Updating…
+			</span>
+		{/if}
 	</div>
 	<div class="flex gap-2 items-center flex-wrap">
 		<div class="chips" data-testid="filter-chips">
@@ -567,6 +597,16 @@
 {/if}
 
 <style>
+	.feed-loading {
+		animation: feed-loading-pulse 1.4s ease-in-out infinite;
+	}
+	@keyframes feed-loading-pulse {
+		0%, 100% { opacity: 0.55; }
+		50% { opacity: 1; }
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.feed-loading { animation: none; opacity: 0.75; }
+	}
 	.nav-btn {
 		padding: 0.4rem 0.85rem;
 		border-radius: 9999px;
