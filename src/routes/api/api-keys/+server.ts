@@ -34,12 +34,18 @@ function toListed(row: typeof apiKeys.$inferSelect): ListedApiKey {
 
 /**
  * List API keys. Revoked keys are excluded — once revoked, a key is dead
- * and shouldn't clutter the UI. `?userId=N` filters to one user's keys
- * (use `?userId=null` or omit the param + `?shared=1` for shared keys).
+ * and shouldn't clutter the UI. `?userId=N` filters to one user's keys;
+ * `?shared=1` returns only shared keys (those with no associated user).
+ * The two filters are mutually exclusive — combining them is a client
+ * mistake we surface as 400 rather than picking one silently.
  */
 export const GET: RequestHandler = async ({ url }) => {
 	const userIdParam = url.searchParams.get('userId');
 	const shared = url.searchParams.get('shared') === '1';
+
+	if (shared && userIdParam !== null) {
+		apiError(400, 'shared=1 cannot be combined with userId');
+	}
 
 	const conditions = [isNull(apiKeys.revokedAt)];
 	if (shared) {
@@ -76,16 +82,33 @@ export const POST: RequestHandler = async ({ request }) => {
 	let userId: number | null = null;
 	if (body.userId !== undefined && body.userId !== null) {
 		if (!Number.isInteger(body.userId)) apiError(400, 'userId must be an integer');
-		const [u] = await db.select().from(users).where(eq(users.id, body.userId)).limit(1);
-		if (!u) apiError(400, 'userId does not match a known user');
 		userId = body.userId;
 	}
 
 	const { plaintext, keyHash, prefix } = generateApiKey();
-	const [row] = await db
-		.insert(apiKeys)
-		.values({ name, keyHash, prefix, userId })
-		.returning();
+
+	// Verify the user still exists and insert in the same transaction so
+	// a concurrent delete can't leave a dangling reference. The FK has
+	// `onDelete: 'cascade'` as a backstop, but doing the check inside the
+	// txn lets us return a clear 400 instead of a 500 from the cascade.
+	const insertedUserId = userId;
+	const row = db.transaction((tx) => {
+		if (insertedUserId !== null) {
+			const [u] = tx
+				.select()
+				.from(users)
+				.where(eq(users.id, insertedUserId))
+				.limit(1)
+				.all();
+			if (!u) apiError(400, 'userId does not match a known user');
+		}
+		const [r] = tx
+			.insert(apiKeys)
+			.values({ name, keyHash, prefix, userId: insertedUserId })
+			.returning()
+			.all();
+		return r;
+	});
 
 	return json({ ...toListed(row), plaintext }, { status: 201 });
 };

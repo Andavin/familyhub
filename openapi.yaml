@@ -42,10 +42,11 @@ info:
     3. Revoke a key from the same UI; the token is rejected immediately
        on the next request.
 
-    Per-user keys carry that user's id into the request so integrations
-    can attribute work (e.g. created tasks land assigned to that
-    person) without restating it on every call. Shared keys have no
-    associated user — anything created through them is unattributed.
+    Per-user keys carry the user's id on `event.locals.apiUserId` for
+    routes that want to attribute work automatically. As of this
+    revision no write endpoint consumes that field yet — integrations
+    must continue to send `assigneeId` etc. explicitly. The wiring
+    will be added per-route as concrete integrations land.
 
     ## Conventions
 

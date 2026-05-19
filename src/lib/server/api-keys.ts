@@ -45,9 +45,10 @@ export function extractBearerToken(header: string | null): string | null {
  * hasn't been revoked, otherwise null. Caller decides what to do on null
  * (almost always: 401).
  *
- * Hash comparison happens inside SQLite via an indexed equality, which
- * is constant-time relative to the keyspace — there's no timing channel
- * an attacker could use to enumerate prefixes.
+ * The B-tree index lookup isn't literally constant-time, but the token
+ * is a 256-bit CSPRNG output — an attacker can't construct two inputs
+ * that probe specific tree paths, so any timing variation in the lookup
+ * carries no information they could use to enumerate keys.
  */
 export async function findApiKey(plaintext: string): Promise<ApiKey | null> {
 	const keyHash = sha256(plaintext);
@@ -65,16 +66,22 @@ const lastUsedMemo = new Map<number, number>();
 
 /**
  * Record that a key was just used. Throttled — at most one write per
- * LAST_USED_WRITE_INTERVAL_MS per key. Fire-and-forget; auth has
- * already succeeded by the time this runs, so DB hiccups must not
- * fail the request.
+ * LAST_USED_WRITE_INTERVAL_MS per key. Auth has already succeeded by the
+ * time this runs, so DB hiccups must not fail the request: we catch and
+ * log, and only stamp the in-memory throttle once the write has actually
+ * landed. Stamping the memo *before* the write would let a transient
+ * SQLite error block retries for the full window.
  */
 export function touchApiKey(keyId: number, now: number = Date.now()): void {
 	const last = lastUsedMemo.get(keyId) ?? 0;
 	if (now - last < LAST_USED_WRITE_INTERVAL_MS) return;
-	lastUsedMemo.set(keyId, now);
-	db.update(apiKeys)
-		.set({ lastUsedAt: new Date(now) })
-		.where(eq(apiKeys.id, keyId))
-		.run();
+	try {
+		db.update(apiKeys)
+			.set({ lastUsedAt: new Date(now) })
+			.where(eq(apiKeys.id, keyId))
+			.run();
+		lastUsedMemo.set(keyId, now);
+	} catch (err) {
+		console.error('[api-keys] touchApiKey failed', { keyId, err });
+	}
 }

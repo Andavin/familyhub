@@ -286,9 +286,10 @@ export const sessions = sqliteTable(
  * captures the first 12 chars of the plaintext so the UI can show
  * "fh_a1b2c3d4…" without storing the secret.
  *
- * `userId` null = shared key (anyone can mint/revoke; no automatic
- * assignee). When set, the key inherits that user's identity for
- * convenience attribution by integrations.
+ * `userId` null = shared key. When set, the key is bound to a user so
+ * future integrations can attribute work to them automatically (the
+ * hook surfaces it as `locals.apiUserId`). No write endpoint consumes
+ * that yet — wire it up per-route as concrete integrations land.
  *
  * Revocation is soft: `revokedAt` is set and lookups filter it out.
  * Keeps history visible in the UI ("last used at") even after revoke.
