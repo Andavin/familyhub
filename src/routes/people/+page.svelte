@@ -2,6 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import UserEditModal from '$lib/components/UserEditModal.svelte';
 	import CalendarFeedsEditor from '$lib/components/CalendarFeedsEditor.svelte';
+	import ApiKeysEditor from '$lib/components/ApiKeysEditor.svelte';
 	import { colorVar } from '$lib/colors';
 	import { themeStore, setTheme, type Theme } from '$lib/theme.svelte';
 	import type { PageData } from './$types';
@@ -13,6 +14,7 @@
 	let editing = $state<User | null>(null);
 
 	const sharedFeeds = $derived(data.feeds.filter((f: CalendarFeed) => f.userId === null));
+	const sharedApiKeys = $derived(data.apiKeys.filter((k) => k.userId === null));
 
 	function countsFor(userId: number) {
 		const calendars = data.feeds.filter((f) => f.userId === userId).length;
@@ -91,6 +93,19 @@
 		/>
 	</section>
 
+	<section class="shared-section" data-testid="shared-api-keys">
+		<header class="flex items-center gap-2 mb-1">
+			<span class="shared-icon" aria-hidden="true">🔑</span>
+			<h2 class="font-bold text-lg">Shared API Keys</h2>
+		</header>
+		<p class="text-xs text-[color:var(--color-muted)] mb-3">
+			Bearer tokens for external integrations (Apple Reminders sync, grocery
+			importers, automations). Shared keys aren't tied to a specific person —
+			use a per-person key from inside an Edit Person dialog for attribution.
+		</p>
+		<ApiKeysEditor keys={sharedApiKeys} userId={null} testIdPrefix="shared-api-key" />
+	</section>
+
 	<section class="settings-section" data-testid="appearance-section">
 		<header class="flex items-center gap-2 mb-1">
 			<span class="shared-icon" aria-hidden="true">🎨</span>
@@ -131,6 +146,7 @@
 	open={modalOpen}
 	user={editing}
 	feeds={editing ? data.feeds.filter((f: CalendarFeed) => f.userId === editing!.id) : []}
+	apiKeys={editing ? data.apiKeys.filter((k) => k.userId === editing!.id) : []}
 	onclose={() => (modalOpen = false)}
 	onsaved={async () => {
 		await invalidateAll();
