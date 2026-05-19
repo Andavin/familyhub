@@ -276,6 +276,46 @@ export const sessions = sqliteTable(
 );
 
 /**
+ * API keys for external integrations (Apple Reminders sync, grocery
+ * importers, automations). Presented as `Authorization: Bearer <token>`
+ * by the client and validated in `hooks.server.ts`.
+ *
+ * Stored as SHA-256 of the plaintext — high-entropy tokens (256 bits
+ * from a CSPRNG) don't need a slow KDF the way a low-entropy password
+ * does, and SHA-256 lets us index `keyHash` for O(1) lookup. `prefix`
+ * captures the first 12 chars of the plaintext so the UI can show
+ * "fh_a1b2c3d4…" without storing the secret.
+ *
+ * `userId` null = shared key (anyone can mint/revoke; no automatic
+ * assignee). When set, the key inherits that user's identity for
+ * convenience attribution by integrations.
+ *
+ * Revocation is soft: `revokedAt` is set and lookups filter it out.
+ * Keeps history visible in the UI ("last used at") even after revoke.
+ */
+export const apiKeys = sqliteTable(
+	'api_keys',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		name: text('name').notNull(),
+		keyHash: text('key_hash').notNull(),
+		prefix: text('prefix').notNull(),
+		userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`),
+		lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }),
+		revokedAt: integer('revoked_at', { mode: 'timestamp_ms' })
+	},
+	(t) => ({
+		keyHashIdx: uniqueIndex('api_keys_key_hash_idx').on(t.keyHash),
+		userIdx: index('api_keys_user_idx').on(t.userId)
+	})
+);
+
+export type ApiKey = typeof apiKeys.$inferSelect;
+
+/**
  * Apple-Reminders-style tags. Names are stored lower-case so `#cleaning`
  * and `#Cleaning` collapse to one tag. Scoped to a single surface
  * (tasks/checklists or groceries) so the two pickers don't pollute each
