@@ -156,24 +156,28 @@ test.describe('realtime sync', () => {
 		expect(result.taskEvents).toEqual([]);
 	});
 
-	test('reconnection: tab B picks up missed events after a forced reload', async ({
+	test('navigating away and back: tab B converges to current state via SSR + ready', async ({
 		context,
 		page
 	}) => {
-		// Belt-and-braces: even if the SSE connection drops between an
-		// emit and a re-subscribe, the `ready` event from the new stream
-		// triggers a blanket invalidate so the tab catches up to current
-		// state. We simulate by force-navigating tab B after a mutation.
+		// This is the second-best of the catch-up paths: when tab B
+		// navigates between pages, its SvelteKit loader re-fetches data
+		// for the new route (so it inherently sees current state), AND
+		// the `ready` event from the EventSource the new page is using
+		// fires a blanket invalidate. So even if B was on /people while
+		// A added a task, B sees the task once it lands back on /.
+		//
+		// NOTE: this does NOT exercise true TCP-level reconnection
+		// (server bounce, network drop). EventSource's built-in retry
+		// is a separate path we don't have an easy hook to force from
+		// Playwright; this test just pins that data-level convergence
+		// works across navigation.
 		await login(page);
 		await page.goto('/');
 
 		const pageB = await context.newPage();
 		await pageB.goto('/');
 
-		// Mutate while B is on /people (different page, different load).
-		// We can't `waitForLoadState('networkidle')` because the SSE
-		// stream stays open — instead, wait for a known /people element
-		// that only renders after hydration to be sure the page is live.
 		await pageB.goto('/people');
 		await expect(pageB.getByRole('heading', { name: /people/i }).first()).toBeVisible();
 
@@ -182,11 +186,85 @@ test.describe('realtime sync', () => {
 		await colA.getByTestId('add-task-input').press('Enter');
 		await expect(colA.getByText('Reconnect echo')).toBeVisible();
 
-		// Navigate B back to /tasks — the SSR data refetched on
-		// navigation will have the new task, and any prior missed
-		// events are caught by `ready` triggering full invalidation.
 		await pageB.goto('/');
 		await expect(pageB.getByText('Reconnect echo')).toBeVisible({ timeout: 5000 });
 		await pageB.close();
+	});
+
+	test('cid edge cases: empty, oversized, and missing all still produce a usable stream', async ({
+		page
+	}) => {
+		// Pins the validation in `+server.ts`: anything that isn't a
+		// well-formed cid is dropped (with a server-side warn) and the
+		// stream still serves events — it just can't filter self-echo
+		// for that connection. A regression that early-returned on bad
+		// cid would lock those clients out of realtime entirely.
+		await login(page);
+
+		const checks = await page.evaluate(async () => {
+			const variants = [
+				{ label: 'missing', suffix: '' },
+				{ label: 'empty', suffix: '?cid=' },
+				{ label: 'oversized', suffix: `?cid=${'a'.repeat(101)}` }
+			];
+			const results: Array<{ label: string; status: number; firstChunk: string }> = [];
+			for (const v of variants) {
+				const ac = new AbortController();
+				const resp = await fetch(`/api/events${v.suffix}`, { signal: ac.signal });
+				const reader = resp.body!.getReader();
+				const { value } = await reader.read();
+				ac.abort();
+				results.push({
+					label: v.label,
+					status: resp.status,
+					firstChunk: new TextDecoder().decode(value ?? new Uint8Array())
+				});
+			}
+			return results;
+		});
+
+		for (const c of checks) {
+			expect(c.status, c.label).toBe(200);
+			expect(c.firstChunk, c.label).toContain('event: ready');
+		}
+	});
+
+	test('/api/events accepts bearer API key auth (not just cookies)', async ({ page, browser }) => {
+		// `hooks.server.ts` allows both auth modes for /api/*. The unauth
+		// test pins the negative path; this one pins that a freshly-minted
+		// bearer key reaches the SSE handshake. We need a cookie-free
+		// browser context so the bearer is the only thing authenticating.
+		await login(page);
+		const keyRes = await page.request.post('/api/api-keys', {
+			data: { name: 'sse-bearer-probe' }
+		});
+		expect(keyRes.status()).toBe(201);
+		const { plaintext } = (await keyRes.json()) as { plaintext: string };
+
+		const cleanCtx = await browser.newContext();
+		const cleanPage = await cleanCtx.newPage();
+		// Navigate to /login so the page has an origin; the page itself
+		// is unauthenticated. The fetch below uses only the bearer.
+		await cleanPage.goto('http://localhost:4173/login');
+
+		const handshake = await cleanPage.evaluate(async (bearer) => {
+			const ac = new AbortController();
+			const resp = await fetch('/api/events', {
+				signal: ac.signal,
+				headers: { authorization: `Bearer ${bearer}` }
+			});
+			const reader = resp.body!.getReader();
+			const { value } = await reader.read().catch(() => ({ value: new Uint8Array() }));
+			ac.abort();
+			return {
+				status: resp.status,
+				firstChunk: new TextDecoder().decode(value ?? new Uint8Array())
+			};
+		}, plaintext);
+
+		expect(handshake.status).toBe(200);
+		expect(handshake.firstChunk).toContain('event: ready');
+
+		await cleanCtx.close();
 	});
 });

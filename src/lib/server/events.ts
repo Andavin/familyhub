@@ -1,30 +1,25 @@
-import { EventEmitter } from 'node:events';
 import type { Channel } from '$lib/channels';
 import { currentClientId } from './request-context';
 
-/**
- * Channel constants live in `$lib/channels` so the client realtime
- * subscriber can import them without pulling in server-only modules.
- * Re-exported here for ergonomic server-side imports.
- */
 export { CHANNELS, isChannel } from '$lib/channels';
 export type { Channel } from '$lib/channels';
 
+type Handler = (channel: Channel, originId: string | undefined) => void;
+
 /**
  * Single in-process bus. Every connected SSE client attaches one
- * listener; mutation endpoints emit via `broadcast(...)`. We disable
- * the default max-listener cap because each browser tab opens its own
- * EventSource — a family of five with multiple devices easily exceeds
- * Node's default 10.
+ * handler; mutation endpoints emit via `broadcast(...)`. Singleton on
+ * purpose — a multi-process deploy would need a pub/sub backplane
+ * (Redis, Postgres LISTEN/NOTIFY) but this app runs as a single Node
+ * process, so an in-memory `Set` is sufficient.
  *
- * This is a singleton on purpose. A multi-process deploy would need a
- * pub/sub backplane (Redis, Postgres LISTEN/NOTIFY) but this app runs
- * as a single Node process so the in-memory bus is sufficient.
+ * We don't use `EventEmitter` because its rethrow-on-handler-throw
+ * semantics let one buggy subscriber abort delivery to every other
+ * subscriber — exactly the "broadcast quietly dies for N-1 tabs"
+ * failure mode this layer must avoid. With a plain `Set` we can wrap
+ * each handler call defensively.
  */
-const emitter = new EventEmitter();
-emitter.setMaxListeners(0);
-
-const CHANGE_EVENT = 'change';
+const handlers = new Set<Handler>();
 
 /**
  * Broadcast a change on a channel. The originating client id is read
@@ -34,21 +29,31 @@ const CHANGE_EVENT = 'change';
  *
  * The optional `originIdOverride` is for callers that don't have a
  * request context — typically tests or background jobs.
+ *
+ * Handler exceptions are caught and logged, never propagated. A
+ * misbehaving SSE connection must not crash a mutation route or
+ * silently skip other connected tabs.
  */
 export function broadcast(channel: Channel, originIdOverride?: string): void {
 	const originId = originIdOverride ?? currentClientId();
-	emitter.emit(CHANGE_EVENT, channel, originId);
+	// Snapshot handlers so a subscribe/unsubscribe during emit can't
+	// shift the iteration. Set iteration is insertion-ordered.
+	for (const h of [...handlers]) {
+		try {
+			h(channel, originId);
+		} catch (err) {
+			console.warn('[events] subscriber threw; continuing', { channel, err });
+		}
+	}
 }
 
-export function subscribe(
-	handler: (channel: Channel, originId: string | undefined) => void
-): () => void {
-	emitter.on(CHANGE_EVENT, handler);
+export function subscribe(handler: Handler): () => void {
+	handlers.add(handler);
 	return () => {
-		emitter.off(CHANGE_EVENT, handler);
+		handlers.delete(handler);
 	};
 }
 
 export function listenerCount(): number {
-	return emitter.listenerCount(CHANGE_EVENT);
+	return handlers.size;
 }

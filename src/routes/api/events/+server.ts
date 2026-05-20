@@ -35,25 +35,72 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	// updated optimistically, so re-rendering on its own broadcast just
 	// causes flicker and (for scroll-preserving UX) visible jumps.
 	const rawCid = url.searchParams.get('cid');
-	const ownClientId =
-		rawCid && rawCid.length > 0 && rawCid.length <= MAX_CLIENT_ID_LEN ? rawCid : undefined;
+	let ownClientId: string | undefined;
+	if (rawCid !== null) {
+		if (rawCid.length > 0 && rawCid.length <= MAX_CLIENT_ID_LEN) {
+			ownClientId = rawCid;
+		} else {
+			// Don't trust an oversized or empty id, but log it so we notice
+			// if a real client starts shipping malformed cids (vs misbehaving
+			// scanners we'd ignore).
+			console.warn(
+				`[sse] dropping malformed cid (len=${rawCid.length}); self-echo filter disabled for this connection`
+			);
+		}
+	}
 
 	let unsubscribe: (() => void) | null = null;
 	let heartbeat: ReturnType<typeof setInterval> | null = null;
 	let closed = false;
+	let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
+
+	// Shared teardown for the interval + bus subscription. Idempotent
+	// (guarded by `closed`) and centralized so the abort path and the
+	// stream's own `cancel()` callback don't drift apart.
+	//
+	// `closeController` is parameterized: only the abort path needs to
+	// proactively close the controller. From inside `cancel()` the
+	// runtime is already tearing the stream down — calling close() at
+	// that point throws ERR_INVALID_STATE.
+	const teardown = ({ closeController }: { closeController: boolean }) => {
+		if (closed) return;
+		closed = true;
+		if (heartbeat !== null) {
+			clearInterval(heartbeat);
+			heartbeat = null;
+		}
+		if (unsubscribe !== null) {
+			unsubscribe();
+			unsubscribe = null;
+		}
+		if (closeController && controllerRef) {
+			try {
+				controllerRef.close();
+			} catch (err) {
+				console.warn('[sse] controller.close failed', err);
+			}
+		}
+		controllerRef = null;
+	};
 
 	const stream = new ReadableStream<Uint8Array>({
 		start(controller) {
+			controllerRef = controller;
 			const encoder = new TextEncoder();
 
 			const enqueue = (chunk: string) => {
 				if (closed) return;
 				try {
 					controller.enqueue(encoder.encode(chunk));
-				} catch {
-					// Controller closed between our check and enqueue. The abort
-					// listener will run cleanup; nothing useful to do here.
-					closed = true;
+				} catch (err) {
+					// Controller died mid-write — typically because the client
+					// hung up between our `closed` check and the enqueue call.
+					// Log it (so we don't silently neuter the stream) and run
+					// cleanup actively: otherwise heartbeats keep firing into
+					// a dead controller and the browser's EventSource thinks
+					// it's still subscribed.
+					console.warn('[sse] enqueue failed; tearing down stream', err);
+					teardown({ closeController: true });
 				}
 			};
 
@@ -77,31 +124,20 @@ export const GET: RequestHandler = async ({ request, url }) => {
 				enqueue(`: heartbeat ${Date.now()}\n\n`);
 			}, HEARTBEAT_INTERVAL_MS);
 
-			const cleanup = () => {
-				if (closed) return;
-				closed = true;
-				if (heartbeat) clearInterval(heartbeat);
-				if (unsubscribe) unsubscribe();
-				try {
-					controller.close();
-				} catch {
-					// already closed
-				}
-			};
-
 			// `request.signal` aborts when the client disconnects (tab close,
 			// navigation, network drop). Without this listener the bus would
 			// leak one stale subscriber per dropped connection.
+			const onAbort = () => teardown({ closeController: true });
 			if (request.signal.aborted) {
-				cleanup();
+				onAbort();
 			} else {
-				request.signal.addEventListener('abort', cleanup, { once: true });
+				request.signal.addEventListener('abort', onAbort, { once: true });
 			}
 		},
 		cancel() {
-			closed = true;
-			if (heartbeat) clearInterval(heartbeat);
-			if (unsubscribe) unsubscribe();
+			// The runtime is tearing the stream down for us — don't try
+			// to close the controller (it's already in a terminal state).
+			teardown({ closeController: false });
 		}
 	});
 

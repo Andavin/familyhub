@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { broadcast, subscribe, listenerCount, CHANNELS, isChannel, type Channel } from './events';
+import { requestContext } from './request-context';
 
 describe('events broadcaster', () => {
 	it('delivers a broadcast to a subscribed handler', () => {
@@ -67,26 +68,23 @@ describe('events broadcaster', () => {
 		expect(listenerCount()).toBe(baseline);
 	});
 
-	it('throwing in one subscriber does not block delivery to others', () => {
-		// Node's EventEmitter aborts the emit on the first uncaught handler
-		// throw, so we want subscribers to be defensive. This test pins the
-		// expectation: if a future contributor wraps handlers, both still
-		// fire; if not, the test documents the gotcha.
+	it('a throwing subscriber does NOT block delivery to others', () => {
+		// Load-bearing for the realtime layer: one buggy SSE handler must
+		// not silently skip every other connected tab. The bus catches
+		// per-handler exceptions and continues iterating. If a refactor
+		// ever drops that wrapping, the bus regresses to "broadcast
+		// quietly dies for N-1 tabs" and this test fails loudly.
 		const received: Channel[] = [];
 		const offBad = subscribe(() => {
 			throw new Error('boom');
 		});
 		const offGood = subscribe((c: Channel) => received.push(c));
 
-		// EventEmitter rethrows synchronously; we just want to know the
-		// good listener ran first (registration order is FIFO).
-		expect(() => broadcast('tasks')).toThrow('boom');
-
-		// `offBad` was registered first, so by FIFO ordering the throw
-		// happens before the good listener gets a chance. The test
-		// documents this so a future refactor that re-orders listeners
-		// or adds try/catch knows what behavior changed.
-		expect(received).toEqual([]);
+		// Should NOT throw — the bus swallows handler errors.
+		expect(() => broadcast('tasks')).not.toThrow();
+		// Good handler still received the event despite the bad one
+		// throwing first (FIFO order).
+		expect(received).toEqual(['tasks']);
 
 		offBad();
 		offGood();
@@ -115,5 +113,33 @@ describe('events broadcaster', () => {
 		expect(isChannel('api-keys')).toBe(true);
 		expect(isChannel('bogus')).toBe(false);
 		expect(isChannel('')).toBe(false);
+	});
+
+	it('broadcast picks up clientId from AsyncLocalStorage across awaits', async () => {
+		// Mutation endpoints `await` the DB operation before calling
+		// `broadcast(channel)` with no arguments. The id has to survive
+		// that await — that's the whole point of using
+		// `AsyncLocalStorage` instead of a per-request variable. If a
+		// future refactor swaps the ALS for a plain Map or schedules the
+		// broadcast across a `setImmediate`, self-echo filtering
+		// regresses silently to "always fire", which a unit test catches
+		// faster than the integration suite.
+		const calls: Array<{ channel: Channel; originId: string | undefined }> = [];
+		const off = subscribe((c, o) => calls.push({ channel: c, originId: o }));
+
+		await requestContext.run({ clientId: 'tab-X' }, async () => {
+			await Promise.resolve();
+			await new Promise((r) => setTimeout(r, 0));
+			broadcast('tasks');
+		});
+
+		// Outside the run() scope, currentClientId() returns undefined.
+		broadcast('users');
+
+		expect(calls).toEqual([
+			{ channel: 'tasks', originId: 'tab-X' },
+			{ channel: 'users', originId: undefined }
+		]);
+		off();
 	});
 });

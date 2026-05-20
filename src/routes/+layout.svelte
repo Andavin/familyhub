@@ -12,9 +12,8 @@
 
 	// Open the SSE connection while the user is signed in. We skip it
 	// on /login because the hook would return 401 and EventSource would
-	// retry on a loop. The `$derived` boolean only re-fires the effect
-	// on the /login ↔ rest-of-app transition (not on every navigation),
-	// so the connection stays open across page-to-page navigation.
+	// retry in a loop. The effect tears down on /login transitions and
+	// re-opens after sign-in.
 	const onLogin = $derived(page.url.pathname === '/login');
 	$effect(() => {
 		if (onLogin) return;
