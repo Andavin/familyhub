@@ -5,6 +5,7 @@ import { calendarFeeds } from '$lib/server/schema';
 import { asc } from 'drizzle-orm';
 import { validateFeedUrl } from '$lib/server/url-allowlist';
 import { apiError } from '$lib/server/api-error';
+import { broadcast } from '$lib/server/events';
 
 export const GET: RequestHandler = async () => {
 	const rows = await db.select().from(calendarFeeds).orderBy(asc(calendarFeeds.id));
@@ -32,5 +33,6 @@ export const POST: RequestHandler = async ({ request }) => {
 			userId: body.userId ?? null
 		})
 		.returning();
+	broadcast('feeds');
 	return json(row, { status: 201 });
 };

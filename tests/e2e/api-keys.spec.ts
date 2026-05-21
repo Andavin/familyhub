@@ -10,7 +10,9 @@ test.describe('api keys', () => {
 	test.beforeEach(async ({ page }) => {
 		await login(page);
 		await page.goto('/people');
-		await page.waitForLoadState('networkidle');
+		// `networkidle` doesn't fire here because the realtime SSE
+		// connection stays open. The test acts on rendered UI elements,
+		// and Playwright's expect-with-timeout handles hydration delay.
 	});
 
 	test('shared key: create → call /api/tasks with bearer → revoke → 401', async ({
@@ -46,10 +48,12 @@ test.describe('api keys', () => {
 		const okResp = await apiCtx.get('/api/tasks');
 		expect(okResp.status()).toBe(200);
 
-		// Revoke via the row's delete button
+		// Revoke via the row's delete button. The follow-up assertion
+		// auto-retries until the row is gone, so we don't need a manual
+		// network-settle wait (which `networkidle` can't deliver anyway
+		// while the SSE stream is open).
 		const id = (await row.first().getAttribute('data-testid'))!.split('-').pop();
 		await page.getByTestId(`shared-api-key-delete-${id}`).click();
-		await page.waitForLoadState('networkidle');
 		await expect(
 			page.locator('[data-testid^="shared-api-key-row-"]', { hasText: 'Reminders sync' })
 		).toHaveCount(0);

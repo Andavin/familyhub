@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { clearIcsCache } from '$lib/server/ics';
 import { validateFeedUrl } from '$lib/server/url-allowlist';
 import { apiError } from '$lib/server/api-error';
+import { broadcast } from '$lib/server/events';
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const id = Number(params.id);
@@ -35,6 +36,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		.returning();
 	if (!row) apiError(404, 'not found');
 	if ('url' in body) clearIcsCache();
+	broadcast('feeds');
 	return json(row);
 };
 
@@ -42,5 +44,6 @@ export const DELETE: RequestHandler = async ({ params }) => {
 	const id = Number(params.id);
 	if (!Number.isFinite(id)) apiError(400, 'invalid id');
 	await db.delete(calendarFeeds).where(eq(calendarFeeds.id, id));
+	broadcast('feeds');
 	return json({ ok: true });
 };

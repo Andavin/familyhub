@@ -2,10 +2,22 @@ import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { randomBytes } from 'node:crypto';
 import { SESSION_COOKIE, validateSession } from '$lib/server/auth';
 import { extractBearerToken, findApiKey, touchApiKey } from '$lib/server/api-keys';
+import { requestContext } from '$lib/server/request-context';
 
 const PUBLIC_ROUTES = ['/login', '/api/login', '/manifest.webmanifest', '/favicon.svg'];
 
 export const handle: Handle = async ({ event, resolve }) => {
+	// Wrap the entire request lifecycle in an AsyncLocalStorage scope so
+	// any server-side code (notably the realtime broadcaster) can read
+	// the originating client id without threading it through call sites.
+	const clientId = event.request.headers.get('x-fh-client-id') ?? undefined;
+	return requestContext.run({ clientId }, () => handleRequest(event, resolve));
+};
+
+async function handleRequest(
+	event: Parameters<Handle>[0]['event'],
+	resolve: Parameters<Handle>[0]['resolve']
+): Promise<Response> {
 	const path = event.url.pathname;
 
 	// Bearer API keys are only honored for /api/* — the kiosk UI is
@@ -57,7 +69,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	return resolve(event);
-};
+}
 
 /**
  * Last-resort handler for anything a route didn't catch itself.

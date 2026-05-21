@@ -2,11 +2,22 @@
 	import '../app.css';
 	import { page } from '$app/state';
 	import { initTheme } from '$lib/theme.svelte';
+	import { startRealtime } from '$lib/realtime';
 
 	let { children } = $props();
 
 	$effect(() => {
 		initTheme();
+	});
+
+	// Open the SSE connection while the user is signed in. We skip it
+	// on /login because the hook would return 401 and EventSource would
+	// retry in a loop. The effect tears down on /login transitions and
+	// re-opens after sign-in.
+	const onLogin = $derived(page.url.pathname === '/login');
+	$effect(() => {
+		if (onLogin) return;
+		return startRealtime();
 	});
 
 	type NavItem = {

@@ -5,6 +5,7 @@ import { lists } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import { pruneChecklistsForList } from '$lib/server/checklists';
 import { apiError } from '$lib/server/api-error';
+import { broadcast } from '$lib/server/events';
 
 const VALID_KINDS = new Set(['chores', 'grocery', 'general']);
 
@@ -29,6 +30,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	if ('displayOrder' in body) update.displayOrder = body.displayOrder;
 	const [row] = await db.update(lists).set(update).where(eq(lists.id, id)).returning();
 	if (!row) apiError(404, 'not found');
+	broadcast('lists');
 	return json(row);
 };
 
@@ -37,5 +39,10 @@ export const DELETE: RequestHandler = async ({ params }) => {
 	if (!Number.isFinite(id)) apiError(400, 'invalid id');
 	await pruneChecklistsForList(id);
 	await db.delete(lists).where(eq(lists.id, id));
+	// Deleting a list cascades to its tasks and may prune checklists, so
+	// fan out to all three domains rather than just `lists`.
+	broadcast('lists');
+	broadcast('tasks');
+	broadcast('checklists');
 	return json({ ok: true });
 };

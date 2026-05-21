@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { markPurchased, undoPurchase } from '$lib/server/grocery';
 import { setGroceryItemTags } from '$lib/server/tags';
 import { apiError } from '$lib/server/api-error';
+import { broadcast } from '$lib/server/events';
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const id = Number(params.id);
@@ -28,6 +29,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			? await markPurchased(id, body.purchasedById ?? null)
 			: await undoPurchase(id);
 		if (!row) apiError(404, 'not found');
+		broadcast('grocery');
 		return json(row);
 	}
 
@@ -77,6 +79,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		await setGroceryItemTags(id, body.tagIds);
 	}
 
+	broadcast('grocery');
 	return json(row);
 };
 
@@ -84,5 +87,6 @@ export const DELETE: RequestHandler = async ({ params }) => {
 	const id = Number(params.id);
 	if (!Number.isFinite(id)) apiError(400, 'invalid id');
 	await db.delete(groceryItems).where(eq(groceryItems.id, id));
+	broadcast('grocery');
 	return json({ ok: true });
 };

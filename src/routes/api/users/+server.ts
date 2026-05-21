@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { users, lists } from '$lib/server/schema';
 import { asc, max } from 'drizzle-orm';
 import { apiError } from '$lib/server/api-error';
+import { broadcast } from '$lib/server/events';
 
 export const GET: RequestHandler = async () => {
 	const rows = await db.select().from(users).orderBy(asc(users.displayOrder));
@@ -36,6 +37,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		})
 		.returning();
 
+	let createdList = false;
 	if (body.createList !== false) {
 		const [{ value: maxListOrder }] = await db
 			.select({ value: max(lists.displayOrder) })
@@ -47,7 +49,10 @@ export const POST: RequestHandler = async ({ request }) => {
 			kind: 'chores',
 			displayOrder: (maxListOrder ?? 0) + 1
 		});
+		createdList = true;
 	}
 
+	broadcast('users');
+	if (createdList) broadcast('lists');
 	return json(user, { status: 201 });
 };

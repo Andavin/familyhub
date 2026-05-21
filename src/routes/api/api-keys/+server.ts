@@ -5,6 +5,7 @@ import { apiKeys, users } from '$lib/server/schema';
 import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import { apiError } from '$lib/server/api-error';
 import { generateApiKey } from '$lib/server/api-keys';
+import { broadcast } from '$lib/server/events';
 
 const MAX_NAME_LEN = 80;
 
@@ -110,5 +111,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		return r;
 	});
 
+	broadcast('api-keys');
 	return json({ ...toListed(row), plaintext }, { status: 201 });
 };

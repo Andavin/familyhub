@@ -129,7 +129,6 @@ test.describe('list reorder', () => {
 		);
 
 		await page.reload();
-		await page.waitForLoadState('networkidle');
 
 		const titlesAfter = await page.locator('.col-title').allInnerTexts();
 		expect(titlesAfter[0]).toBe(titlesBefore[1]);

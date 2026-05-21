@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import type { ChecklistItem } from '$lib/server/schema';
 import { setChecklistTags } from '$lib/server/tags';
 import { apiError } from '$lib/server/api-error';
+import { broadcast } from '$lib/server/events';
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const id = Number(params.id);
@@ -51,6 +52,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		await setChecklistTags(id, body.defaultTagIds);
 	}
 
+	broadcast('checklists');
 	return json(row);
 };
 
@@ -58,5 +60,6 @@ export const DELETE: RequestHandler = async ({ params }) => {
 	const id = Number(params.id);
 	if (!Number.isFinite(id)) apiError(400, 'invalid id');
 	await db.delete(checklists).where(eq(checklists.id, id));
+	broadcast('checklists');
 	return json({ ok: true });
 };

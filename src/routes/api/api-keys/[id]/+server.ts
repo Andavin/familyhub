@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { apiKeys } from '$lib/server/schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import { apiError } from '$lib/server/api-error';
+import { broadcast } from '$lib/server/events';
 
 /**
  * Revoke an API key. Soft-delete via `revokedAt = now` so the audit
@@ -23,8 +24,10 @@ export const DELETE: RequestHandler = async ({ params }) => {
 	if (!row) {
 		// Either no such id or already revoked. Either way, idempotent
 		// 200 — the caller's intent ("this key should be dead") is now
-		// satisfied regardless of which case applied.
+		// satisfied regardless of which case applied. Skip the broadcast
+		// since nothing changed.
 		return json({ ok: true });
 	}
+	broadcast('api-keys');
 	return json({ ok: true });
 };
