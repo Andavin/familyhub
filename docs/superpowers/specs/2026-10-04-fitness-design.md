@@ -202,11 +202,21 @@ Family Hub uses one shared family login, so the Fitness tab has to be safe on sh
 
 ### 2.11 Apple Health sync (PR 4)
 
+**What an iPhone Shortcut can do** (researched 2026-10-04)
+- The "Find Health Samples" action reads weight, body fat, steps, exercise minutes and active energy, and can group results by day.
+  - Dietary energy and protein are unconfirmed and must be checked in the action's type picker.
+  - Lean body mass isn't written to Health by common scale apps, so the server derives it.
+- **No built-in action reads workouts**, through iOS 27.
+- **Health can't be read while the phone is locked.** A time-of-day automation that fires on a locked phone gets nothing.
+- **"App Is Closed" automations run while the phone is unlocked,** so they're the reliable trigger. Closing the scale app after a weigh-in, or the food app after logging, syncs right away.
+- **"Apple Watch Workout starts / ends" automations** can run without a tap and don't need to read Health. The planned workout path uses them: the start automation saves the start time to a file, and the end automation posts the finished workout with its activity, start and end. One pair per workout type.
+- If that proves unreliable, the alternatives are a third-party Health export app that posts workouts, or exercise minutes as a floor-only signal. Manual check-off always works.
+
 **Endpoint and auth**
 - `POST /api/fitness/sync` accepts Apple Health data posted by an iOS Shortcut.
 - It requires a bearer API key bound to a user (`locals.apiUserId`). Cookie sessions and shared keys get 403.
 
-**Payload.** All arrays are optional.
+**Payload.** A top-level object, because Shortcuts can't send a bare array. All arrays are optional.
 ```json
 {
   "samples": [
@@ -229,7 +239,11 @@ Family Hub uses one shared family login, so the Fitness tab has to be safe on sh
 ```
 
 **Processing**
-- **Normalization:** weight in kg is converted to lb, and body fat sent as a fraction (≤ 1) is converted to percent. Health activity names map to the kinds strength, core, yoga, Pilates, HIIT, walk, hike, run, ride and other.
+- **Normalization**
+  - Weight in kg is converted to lb, and body fat sent as a fraction (≤ 1) is converted to percent.
+  - Values may arrive as numbers or as numeric strings with a decimal comma or a long decimal tail; they're parsed and rounded to 0.1.
+  - Times are ISO 8601 with an offset (Shortcuts' Format Date → ISO 8601 with time).
+  - Health activity names map to the kinds strength, core, yoga, Pilates, HIIT, walk, hike, run, ride and other.
 - **Idempotency:** each row is upserted by (user, source `health`, source key).
   - The source key is the Health sample's id when the Shortcut can supply one. Otherwise it's `type + start`, or `type + date` for daily totals.
   - Sending the same week again changes nothing.
@@ -237,8 +251,14 @@ Family Hub uses one shared family login, so the Fitness tab has to be safe on sh
 - **Completion:** imported workouts complete plan items under §2.5.
 
 **Getting there**
-- **Remote access:** a Cloudflare Access application scoped to `/api/fitness/sync` with a Service Auth policy. The Shortcut sends `CF-Access-Client-Id` and `CF-Access-Client-Secret` along with `Authorization: Bearer fh_…`.
-- **Triggers:** a "Sync from Health" button on Today opens the Shortcut through its `shortcuts://` URL. Automations are finalized when PR 4 is planned, based on what Shortcuts can read while the phone is locked.
+- **Remote access:** a Cloudflare Access application scoped to exactly `/api/fitness/sync`, with a Service Auth policy and a service token.
+  - The Shortcut sends `CF-Access-Client-Id` and `CF-Access-Client-Secret` along with `Authorization: Bearer fh_…`.
+  - The scope must stay that narrow. A path-scoped Access app overrides its parent and inherits none of its rules, so a broader `/api/*` scope would lock the web app out of its own API.
+  - Cloudflare's strict service-token mode (October 2026) answers failures with 401/403 instead of a login redirect, which makes errors visible in the Shortcut.
+- **Triggers:**
+  - "App Is Closed" automations for the scale app and the food app.
+  - The Apple Watch workout start/end pairs.
+  - A "Sync from Health" button on Today that opens the Shortcut through `shortcuts://run-shortcut?name=…`. iOS can't route back into a Home Screen web app afterwards, so the Fitness pages reload their data when they become visible again.
 - The Plan tab gets a step-by-step Shortcut guide and the Cloudflare steps.
 
 ### 2.12 Reminders (PR 5)
@@ -407,8 +427,11 @@ This spec covers all five PRs. Each PR gets its own implementation plan, written
 
 ## 6. Risks and open questions
 
-- **Health sync:** what Shortcuts can read while the phone is locked, and which automation triggers run without a tap, decides the PR 4 trigger design. Manual sync and manual entry work regardless.
-- **Body fat in Health:** a scale app may write weight to Apple Health but not body fat. Manual entry covers that gap.
+- **Health sync:**
+  - Shortcuts can't read workouts, and can't read anything while the phone is locked, so the workout path (Watch start/end automations) has to be proven on a real phone in PR 4.
+  - Dietary energy and protein still need confirming in the Shortcuts type picker.
+  - Manual sync and manual entry work regardless.
+- **Body fat in Health:** scale apps' Health writes are reported as unreliable at times (late starts, body fat differing from the app by a few points), and lean mass usually isn't written. Lean mass is derived, and manual entry covers gaps.
 - **Food totals:** estimates from photo-logging apps undercount, so imported calories are shown as rough and never drive a decision. Only protein counts toward a habit.
 - **PIN strength:** the PIN is a privacy screen, not strong security (§2.10).
 
